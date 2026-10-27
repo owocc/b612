@@ -12,6 +12,7 @@ import { scheduleGroupMessageAttention } from '@/server/ai/group/attention';
 import { tickGroupAttention } from '@/server/ai/group/engine';
 import { linkMediaToGroupMessage } from '@/server/media';
 import { waitForMediaPerceptions } from '@/server/ai/vision';
+import { getVisionConfig } from '@/server/settings';
 const createGroupSchema = z.object({
   name: z.string().trim().min(1, '群聊名称必填').max(50, '群聊名称最多 50 字'),
   description: z.string().trim().max(200, '描述最多 200 字').default(''),
@@ -303,7 +304,10 @@ export async function sendGroupMessage(groupId: string, input: z.input<typeof se
   // 4. Wait for perceptions to complete, then schedule AI attention and trigger fast tick
   after(async () => {
     if (mediaAssetIds.length > 0) {
-      await waitForMediaPerceptions(userId, mediaAssetIds, 25000);
+      const visionCfg = await getVisionConfig(userId);
+      if (visionCfg.enabled) {
+        await waitForMediaPerceptions(userId, mediaAssetIds, 25000);
+      }
     }
     await scheduleGroupMessageAttention(userId, groupId, msgId, null, content, replyToMessageId, mentions);
     // Opportunistically run due events (e.g. fast-path @mentions)

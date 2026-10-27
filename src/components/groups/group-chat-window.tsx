@@ -202,6 +202,7 @@ export function GroupChatWindow({
   user,
   initialMessages,
   isDevMode = false,
+  isVisionEnabled = true,
 }: {
   group: GroupRow;
   members: GroupMemberView[];
@@ -209,6 +210,7 @@ export function GroupChatWindow({
   user: { name: string; imageUrl: string | null };
   initialMessages: GroupMessageView[];
   isDevMode?: boolean;
+  isVisionEnabled?: boolean;
 }) {
   const toast = useAppToast();
   const { refresh: refreshSync } = useClientSync();
@@ -367,6 +369,10 @@ export function GroupChatWindow({
 
   // Image Upload helper
   const uploadImageFile = async (file: File) => {
+    if (!isVisionEnabled) {
+      toast.error('AI 识图功能未开启，无法发送图片');
+      return;
+    }
     const tempId = crypto.randomUUID();
     const previewUrl = URL.createObjectURL(file);
 
@@ -427,6 +433,7 @@ export function GroupChatWindow({
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isVisionEnabled) return;
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     for (const file of files) {
@@ -455,26 +462,28 @@ export function GroupChatWindow({
     const text = (rawText ?? inputValue).trim();
     if (isUploadingAny || isPending) return;
 
-    const readyAttachments: MediaAssetView[] = pendingImages
-      .filter((i) => i.status === 'ready' && i.assetId && i.blobUrl)
-      .map((i) => ({
-        id: i.assetId!,
-        userId: '',
-        mediaType: 'image' as const,
-        blobUrl: i.blobUrl!,
-        pathname: '',
-        downloadUrl: null,
-        mimeType: i.file.type || 'image/jpeg',
-        fileSize: i.file.size,
-        originalFilename: i.file.name,
-        width: null,
-        height: null,
-        duration: null,
-        status: 'ready' as const,
-        purpose: 'attachment' as const,
-        perception: i.perception ?? null,
-        createdAt: new Date(),
-      }));
+    const readyAttachments: MediaAssetView[] = isVisionEnabled
+      ? pendingImages
+          .filter((i) => i.status === 'ready' && i.assetId && i.blobUrl)
+          .map((i) => ({
+            id: i.assetId!,
+            userId: '',
+            mediaType: 'image' as const,
+            blobUrl: i.blobUrl!,
+            pathname: '',
+            downloadUrl: null,
+            mimeType: i.file.type || 'image/jpeg',
+            fileSize: i.file.size,
+            originalFilename: i.file.name,
+            width: null,
+            height: null,
+            duration: null,
+            status: 'ready' as const,
+            purpose: 'attachment' as const,
+            perception: i.perception ?? null,
+            createdAt: new Date(),
+          }))
+      : [];
 
     const mediaAssetIds = readyAttachments.map((a) => a.id);
 
@@ -918,6 +927,7 @@ export function GroupChatWindow({
             type="file"
             multiple
             accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+            disabled={!isVisionEnabled}
             {...stylex.props(styles.hidden)}
             onChange={handleFileSelect}
           />
@@ -988,7 +998,7 @@ export function GroupChatWindow({
             elevation="none"
             xstyle={styles.composerBody}
             placeholder={
-              pendingImages.length > 0
+              isVisionEnabled && pendingImages.length > 0
                 ? '添加说明，或直接发送图片…'
                 : `发消息给群聊「${group.name}」…`
             }
@@ -1066,15 +1076,17 @@ export function GroupChatWindow({
             }
             footerActions={
               <div {...stylex.props(styles.footerActions)}>
-                <Button
-                  label="图片"
-                  variant="ghost"
-                  size="sm"
-                  icon={<ImageIcon size={16} />}
-                  aria-label="发送图片"
-                  onClick={() => fileInputRef.current?.click()}
-                  isDisabled={isUploadingAny || isPending}
-                />
+                {isVisionEnabled && (
+                  <Button
+                    label="图片"
+                    variant="ghost"
+                    size="sm"
+                    icon={<ImageIcon size={16} />}
+                    aria-label="发送图片"
+                    onClick={() => fileInputRef.current?.click()}
+                    isDisabled={isUploadingAny || isPending}
+                  />
+                )}
                 <Button
                   label="成员"
                   variant="ghost"

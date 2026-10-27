@@ -15,14 +15,10 @@ import {
   type NotificationPrefs,
 } from '@/server/settings';
 import { generateCharacterImage } from '@/server/ai/image';
-import { generateObject } from 'ai';
-import { createModelFor, getProviderConfig, getModelPrice, fetchProviderModels } from '@/server/ai/providers';
+import { getProviderConfig, getModelPrice, fetchProviderModels } from '@/server/ai/providers';
 import {
   resolveVisionModel,
-  getDefaultVisionModelForProvider,
-  recordUsage,
-  extractUsage,
-  type ResolvedModel,
+  runVisionObject,
 } from '@/server/ai/core';
 import {
   formatAttachmentPromptBlock,
@@ -376,61 +372,36 @@ export async function testVisionModelAction(formData: FormData): Promise<TestVis
   const mime = validation.verifiedMime || 'image/jpeg';
   const compressed = await compressImageBufferForVision(buffer);
   const base64Data = `data:${compressed.mimeType};base64,${compressed.buffer.toString('base64')}`;
-  let resolved: ResolvedModel;
+  let provider = null;
   if (providerId) {
-    const provider = await getProviderConfig(userId, providerId);
+    provider = await getProviderConfig(userId, providerId);
     if (!provider) return { ok: false, error: '指定的 Provider 不存在' };
-    const effectiveModelId = modelId || getDefaultVisionModelForProvider(provider.providerType);
-    resolved = {
-      provider,
-      modelId: effectiveModelId,
-      supportsVision: supportsVision(provider.providerType, effectiveModelId),
-      temperature: temperatureStr ? parseFloat(temperatureStr) : 0.2,
-      topP: null,
-      maxTokens: maxTokensStr ? parseInt(maxTokensStr, 10) : 800,
-    };
   } else {
     const visionResolved = await resolveVisionModel(userId);
     if (!visionResolved.enabled && !modelId) {
       return { ok: false, error: '图片理解功能已停用，请先勾选启用或选择测试模型' };
     }
-    resolved = visionResolved;
   }
 
-  const start = Date.now();
   try {
-    const result = await generateObject({
-      model: createModelFor(resolved.provider, resolved.modelId),
+    const result = await runVisionObject({
+      userId,
       system: VISION_INTERPRETER_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: promptText },
-            { type: 'image', image: base64Data },
-          ],
-        },
-      ],
+      prompt: promptText,
+      imageUrl: base64Data,
+      mimeType: compressed.mimeType,
       schema: imagePerceptionSchema,
-      temperature: resolved.temperature ?? 0.2,
-      maxOutputTokens: resolved.maxTokens ?? 800,
+      temperature: temperatureStr ? parseFloat(temperatureStr) : undefined,
+      maxOutputTokens: maxTokensStr ? parseInt(maxTokensStr, 10) : undefined,
+      providerOverride: provider ?? undefined,
+      modelIdOverride: modelId ?? undefined,
     });
 
-    const durationMs = Date.now() - start;
-    const usageMetrics = extractUsage(result.usage);
-    const price = await getModelPrice(userId, resolved.provider.id, resolved.modelId);
+    const price = await getModelPrice(userId, result.resolved.provider.id, result.resolved.modelId);
     const costUsd = price
-      ? (usageMetrics.inputTokens / 1_000_000) * price.inputPricePerMTok +
-        (usageMetrics.outputTokens / 1_000_000) * price.outputPricePerMTok
+      ? (result.usage.inputTokens / 1_000_000) * price.inputPricePerMTok +
+        (result.usage.outputTokens / 1_000_000) * price.outputPricePerMTok
       : null;
-
-    await recordUsage({
-      userId,
-      characterId: null,
-      callType: 'image_understanding',
-      resolved,
-      usage: { ...usageMetrics, success: true, durationMs },
-    }).catch(console.error);
 
     const perception = result.object as ImagePerceptionData;
     const formattedPromptBlock = formatAttachmentPromptBlock([
@@ -451,12 +422,12 @@ export async function testVisionModelAction(formData: FormData): Promise<TestVis
       perception,
       formattedPromptBlock,
       usage: {
-        model: resolved.modelId,
-        providerName: resolved.provider.name,
-        durationMs,
-        inputTokens: usageMetrics.inputTokens,
-        outputTokens: usageMetrics.outputTokens,
-        totalTokens: usageMetrics.totalTokens,
+        model: result.resolved.modelId,
+        providerName: result.resolved.provider.name,
+        durationMs: result.usage.durationMs,
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        totalTokens: result.usage.totalTokens,
         costUsd,
       },
     };

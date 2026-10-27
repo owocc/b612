@@ -438,12 +438,14 @@ export function ChatWindow({
   user,
   initialMessages,
   isDevMode = false,
+  isVisionEnabled = true,
 }: {
   conversationId: string;
   character: CharacterRow;
   user: { name: string; imageUrl: string | null };
   initialMessages: MessageItem[];
   isDevMode?: boolean;
+  isVisionEnabled?: boolean;
 }) {
   const toast = useAppToast();
   const { refresh: refreshSync, ingestSync } = useClientSync();
@@ -643,6 +645,10 @@ export function ChatWindow({
 
   // Upload an image attachment
   const uploadImageFile = async (file: File) => {
+    if (!isVisionEnabled) {
+      toast.error('AI 识图功能未开启，无法发送图片');
+      return;
+    }
     const tempId = crypto.randomUUID();
     const previewUrl = URL.createObjectURL(file);
 
@@ -703,6 +709,7 @@ export function ChatWindow({
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isVisionEnabled) return;
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     for (const file of files) {
@@ -730,33 +737,35 @@ export function ChatWindow({
   const handleSubmit = async (text: string) => {
     if (isUploadingAny) return;
 
-    const readyAttachments: MediaAssetView[] = pendingImages
-      .filter((i) => i.status === 'ready' && i.assetId && i.blobUrl)
-      .map((i) => ({
-        id: i.assetId!,
-        userId: '',
-        mediaType: 'image' as const,
-        blobUrl: i.blobUrl!,
-        pathname: '',
-        downloadUrl: null,
-        mimeType: i.file.type || 'image/jpeg',
-        fileSize: i.file.size,
-        originalFilename: i.file.name,
-        width: null,
-        height: null,
-        duration: null,
-        status: 'ready' as const,
-        purpose: 'attachment' as const,
-        perception: i.perception
-          ? {
-              status: i.perception.status || 'completed',
-              summary: i.perception.summary || null,
-              ocrText: i.perception.ocrText || null,
-              perception: i.perception.perception || null,
-            }
-          : null,
-        createdAt: new Date(),
-      }));
+    const readyAttachments: MediaAssetView[] = isVisionEnabled
+      ? pendingImages
+          .filter((i) => i.status === 'ready' && i.assetId && i.blobUrl)
+          .map((i) => ({
+            id: i.assetId!,
+            userId: '',
+            mediaType: 'image' as const,
+            blobUrl: i.blobUrl!,
+            pathname: '',
+            downloadUrl: null,
+            mimeType: i.file.type || 'image/jpeg',
+            fileSize: i.file.size,
+            originalFilename: i.file.name,
+            width: null,
+            height: null,
+            duration: null,
+            status: 'ready' as const,
+            purpose: 'attachment' as const,
+            perception: i.perception
+              ? {
+                  status: i.perception.status || 'completed',
+                  summary: i.perception.summary || null,
+                  ocrText: i.perception.ocrText || null,
+                  perception: i.perception.perception || null,
+                }
+              : null,
+            createdAt: new Date(),
+          }))
+      : [];
     const mediaAssetIds = readyAttachments.map((a) => a.id);
 
     if (!text.trim() && mediaAssetIds.length === 0) return;
@@ -828,12 +837,29 @@ export function ChatWindow({
         toast.error(res.error);
       } else if (res?.ok) {
         toast.success('已收款');
+        setTransfersMap((prev) => {
+          const old = prev[transferId];
+          return {
+            ...prev,
+            [transferId]: {
+              transferId,
+              status: 'claimed',
+              amount: res.amount ?? old?.amount ?? 0,
+              currency: res.currency ?? old?.currency ?? 'nw',
+              note: old?.note ?? null,
+              senderType: old?.senderType ?? 'ai',
+              myClaimedAmount: res.amount ?? old?.myClaimedAmount ?? 0,
+              claimedAt: new Date(),
+            },
+          };
+        });
       }
     } catch (err) {
       console.error('[ChatWindow] accept transfer error', err);
       toast.error('网络错误，收款失败');
     }
     await pollConversation();
+    refreshSync();
   };
 
   // 双击头像触发 poke (拍一拍)
@@ -1073,6 +1099,7 @@ export function ChatWindow({
             type="file"
             multiple
             accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+            disabled={!isVisionEnabled}
             {...stylex.props(styles.hidden)}
             onChange={handleFileSelect}
           />
@@ -1081,7 +1108,7 @@ export function ChatWindow({
             elevation="none"
             xstyle={styles.composerBody}
             placeholder={
-              pendingImages.length > 0
+              isVisionEnabled && pendingImages.length > 0
                 ? '添加说明，或直接发送图片…'
                 : `给 ${character.name} 发消息…`
             }
@@ -1165,15 +1192,17 @@ export function ChatWindow({
                   aria-label="发红包"
                   onClick={() => setMoneyDialogOpen(true)}
                 />
-                <Button
-                  label="图片"
-                  variant="ghost"
-                  size="sm"
-                  icon={<ImageIcon size={16} />}
-                  aria-label="发送图片"
-                  onClick={() => fileInputRef.current?.click()}
-                  isDisabled={isUploadingAny}
-                />
+                {isVisionEnabled && (
+                  <Button
+                    label="图片"
+                    variant="ghost"
+                    size="sm"
+                    icon={<ImageIcon size={16} />}
+                    aria-label="发送图片"
+                    onClick={() => fileInputRef.current?.click()}
+                    isDisabled={isUploadingAny}
+                  />
+                )}
               </div>
             }
           />
