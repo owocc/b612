@@ -1,7 +1,8 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { aiCharacters, comments, posts, reactions, user } from '@/db/schema';
 import { getFeedCover } from '@/server/settings';
+import { getFeedHiddenCharacterIds } from '@/server/friend-permissions';
 
 export type PostMedia = {
   type: 'image';
@@ -76,12 +77,80 @@ export async function getFeedPosts(
   if (filter === 'mine') {
     conditions.push(eq(posts.authorType, 'user'));
   }
+  // 朋友圈可见性：被设为「不看他」/「仅聊天」的居民动态不进入我的朋友圈列表。
+  // 过滤发生在查询层，历史动态同样生效，且不删除任何数据（仍可单独查看 TA 的朋友圈）。
+  const hiddenCharacterIds = await getFeedHiddenCharacterIds(userId);
+  if (hiddenCharacterIds.length > 0) {
+    conditions.push(
+      or(isNull(posts.characterId), notInArray(posts.characterId, hiddenCharacterIds))!,
+    );
+  }
   const rows = await basePostQuery(userId)
     .where(and(...conditions))
     .orderBy(desc(posts.createdAt))
     .limit(limit)
     .offset(offset);
   return withParsedMedia(rows) as FeedPost[];
+}
+
+/**
+ * 单独查看某一个居民的朋友圈。
+ * 不受「不看他」/「仅聊天」限制：TA 能发，只是不出现在聚合列表中。
+ */
+export async function getCharacterFeedPosts(
+  userId: string,
+  characterId: string,
+  limit = 30,
+  offset = 0,
+): Promise<FeedPost[]> {
+  const rows = await basePostQuery(userId)
+    .where(
+      and(
+        eq(posts.userId, userId),
+        eq(posts.authorType, 'ai'),
+        eq(posts.characterId, characterId),
+      ),
+    )
+    .orderBy(desc(posts.createdAt))
+    .limit(limit)
+    .offset(offset);
+  return withParsedMedia(rows) as FeedPost[];
+}
+
+/** 居民朋友圈页需要的资料 + 动态总数 */
+export async function getCharacterFeedProfile(userId: string, characterId: string) {
+  const [character] = await db
+    .select({
+      id: aiCharacters.id,
+      name: aiCharacters.name,
+      username: aiCharacters.username,
+      bio: aiCharacters.bio,
+      avatarUrl: aiCharacters.avatarUrl,
+      avatarEmoji: aiCharacters.avatarEmoji,
+      avatarColor: aiCharacters.avatarColor,
+      relationshipToUser: aiCharacters.relationshipToUser,
+      status: aiCharacters.status,
+      friendPermission: aiCharacters.friendPermission,
+      hideMyPostsFromThem: aiCharacters.hideMyPostsFromThem,
+      hideTheirPostsFromMe: aiCharacters.hideTheirPostsFromMe,
+    })
+    .from(aiCharacters)
+    .where(and(eq(aiCharacters.id, characterId), eq(aiCharacters.userId, userId)))
+    .limit(1);
+  if (!character) return null;
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`CAST(count(*) AS INTEGER)` })
+    .from(posts)
+    .where(
+      and(
+        eq(posts.userId, userId),
+        eq(posts.authorType, 'ai'),
+        eq(posts.characterId, characterId),
+      ),
+    );
+
+  return { character, postCount: count };
 }
 
 export async function getPostById(userId: string, postId: string): Promise<FeedPost | null> {

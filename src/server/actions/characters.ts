@@ -103,6 +103,54 @@ export async function setCharacterStatus(id: string, status: 'active' | 'paused'
   return { ok: true };
 }
 
+const friendSettingsSchema = z.object({
+  friendPermission: z.enum(['feed_and_chat', 'chat_only']),
+  hideMyPostsFromThem: z.boolean(),
+  hideTheirPostsFromMe: z.boolean(),
+});
+
+export type FriendSettingsInput = z.input<typeof friendSettingsSchema>;
+
+/**
+ * 保存某个居民的朋友权限 / 朋友圈状态。
+ * 仅聊天时朋友圈已关闭，两个开关会被服务端归一为 false，避免残留脏状态。
+ */
+export async function updateCharacterFriendSettings(id: string, input: FriendSettingsInput) {
+  const userId = await requireUserId();
+  const parsed = friendSettingsSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? '保存失败' };
+  }
+
+  const [character] = await db
+    .select({ id: aiCharacters.id })
+    .from(aiCharacters)
+    .where(and(eq(aiCharacters.id, id), eq(aiCharacters.userId, userId)))
+    .limit(1);
+  if (!character) return { error: '居民不存在' };
+
+  const isChatOnly = parsed.data.friendPermission === 'chat_only';
+  try {
+    await db
+      .update(aiCharacters)
+      .set({
+        friendPermission: parsed.data.friendPermission,
+        hideMyPostsFromThem: isChatOnly ? false : parsed.data.hideMyPostsFromThem,
+        hideTheirPostsFromMe: isChatOnly ? false : parsed.data.hideTheirPostsFromMe,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(aiCharacters.id, id), eq(aiCharacters.userId, userId)));
+  } catch {
+    return { error: '保存失败，请稍后重试' };
+  }
+
+  revalidatePath('/feed');
+  revalidatePath('/characters');
+  revalidatePath(`/characters/${id}`);
+  revalidatePath(`/feed/${id}`);
+  return { ok: true };
+}
+
 export async function deleteCharacter(id: string) {
   const userId = await requireUserId();
   const [char] = await db

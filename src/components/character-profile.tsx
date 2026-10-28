@@ -143,6 +143,7 @@ export function CharacterProfile({
   memories = [],
   friends = [],
   walletBalance = null,
+  friendSettings,
 }: {
   character: CharacterProfileData;
   actions?: ReactNode;
@@ -151,6 +152,8 @@ export function CharacterProfile({
   friends?: CharacterFriend[];
   /** 该居民的平台钱包余额（最小货币单位）；null 表示钱包不可用 */
   walletBalance?: number | null;
+  /** 朋友权限 / 朋友圈状态设置块（详情页传入，聊天内浮层不显示） */
+  friendSettings?: ReactNode;
 }) {
   const router = useRouter();
   const toast = useAppToast();
@@ -389,6 +392,13 @@ export function CharacterProfile({
           </VStack>
         )}
       </VStack>
+
+      {friendSettings && (
+        <>
+          <Divider />
+          {friendSettings}
+        </>
+      )}
 
       <Divider />
 
