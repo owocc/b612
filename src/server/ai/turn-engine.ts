@@ -19,6 +19,7 @@ import {
 } from './memory';
 import { createHistoryRecallTool } from './recall';
 import { createImageGenTool } from './image-tool';
+import { characterAppearanceBlock, loadCharacterAppearance } from './character-appearance';
 import type { GeneratedImage } from './image';
 import { formatAttachmentPromptBlock, waitForMediaPerceptions } from './vision';
 import { getVisionConfig } from '@/server/settings';
@@ -486,11 +487,14 @@ export async function processTurn(
     });
 
     // AI 生图工具与能力检测
+    // 先装配角色形象（仅 is_enabled=true 的资产），再决定是否注入工具与形象提示
     const collectedImages: GeneratedImage[] = [];
+    const appearance = await loadCharacterAppearance({ userId, character });
     const imageToolSet = await createImageGenTool({
       userId,
       characterId,
       collected: collectedImages,
+      appearance,
     });
     const hasImageGen = Object.keys(imageToolSet).length > 0;
     const tools = {
@@ -499,7 +503,7 @@ export async function processTurn(
     };
 
     const imageCapabilityBlock = hasImageGen
-      ? `\n\n【AI 生图能力】当前系统已支持 AI 生图功能。你拥有 generate_image 工具，当你在与 ${userName} 聊天过程中适合配图（例如你主动分享生活画面、展示看到或创作的内容、发表情包、或对方希望看图）时，你可以自主决定调用 generate_image 工具，并由你自己编写具体的生图提示词（prompt）。调用后图片会自动随你的消息发送给对方。`
+      ? `\n\n【AI 生图能力】当前系统已支持 AI 生图功能。你拥有 generate_image 工具，当你在与 ${userName} 聊天过程中适合配图（例如你主动分享生活画面、展示看到或创作的内容、发表情包、或对方希望看图）时，你可以自主决定调用 generate_image 工具，并由你自己编写具体的生图提示词（prompt）。调用后图片会自动随你的消息发送给对方。\n\n${characterAppearanceBlock(appearance)}`
       : '';
     const fullSystem = system + imageCapabilityBlock;
 

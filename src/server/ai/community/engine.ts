@@ -18,6 +18,10 @@ import { NoProviderError, resolveModel, runObject, runText } from '@/server/ai/c
 import { characterSystemPrompt, commentPrompt, postPrompt, replyPrompt } from '@/server/ai/prompts';
 import { getMemories } from '@/server/ai/memory';
 import { createImageGenTool } from '@/server/ai/image-tool';
+import {
+  characterAppearanceBlock,
+  loadCharacterAppearance,
+} from '@/server/ai/character-appearance';
 import type { GeneratedImage } from '@/server/ai/image';
 import { getCommunityConfig, setSetting } from '@/server/settings';
 import { getFriendIds, areFriends } from '@/server/relationships';
@@ -628,20 +632,25 @@ async function handlePulse(userId: string) {
         ? `社区最近这些动态：\n${visiblePosts.map((p) => `- ${p.content.slice(0, 80)}`).join('\n')}`
         : undefined;
 
-      // AI 生图：配置启用时才注入工具，模型可自主决定是否配图
+      // AI 生图：配置启用时才注入工具，模型可自主决定是否配图 / 是否出镜
       const collectedImages: GeneratedImage[] = [];
+      const appearance = await loadCharacterAppearance({ userId, character: c });
       const imageTools = await createImageGenTool({
         userId,
         characterId: c.id,
         collected: collectedImages,
+        appearance,
       });
+      const imageEnabled = Object.keys(imageTools).length > 0;
 
       const content = await runText({
         userId,
         characterId: c.id,
         callType: 'post_generation',
-        system: characterSystemPrompt(c, ownerName),
-        prompt: postPrompt({ context, imageEnabled: Object.keys(imageTools).length > 0 }),
+        system: imageEnabled
+          ? `${characterSystemPrompt(c, ownerName)}\n\n${characterAppearanceBlock(appearance)}`
+          : characterSystemPrompt(c, ownerName),
+        prompt: postPrompt({ context, imageEnabled }),
         tools: imageTools,
         maxSteps: 4,
         temperature: 1,
