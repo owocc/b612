@@ -5,6 +5,8 @@ import {aiCharacters, aiMemories, aiRelationships, providerConfigs} from '@/db/s
 import {requireUserId} from '@/lib/session';
 import {getOrCreateWalletAccount} from '@/server/wallet';
 import {CharacterProfile} from '@/components/character-profile';
+import {FriendSettingsCard} from '@/components/friend-settings-card';
+import {normalizeFriendPermission} from '@/server/friend-permissions';
 import {CharacterEditor, type CharacterFormValues} from '@/components/character-editor';
 import {SendMessageButton} from '@/components/send-message-button';
 import {Button} from '@astryxdesign/core/Button';
@@ -155,6 +157,14 @@ export default async function CharacterViewPage({
       memories={memories}
       friends={friends}
       walletBalance={walletBalance}
+      friendSettings={
+        <FriendSettingsCard
+          characterId={character.id}
+          friendPermission={normalizeFriendPermission(character.friendPermission)}
+          hideMyPostsFromThem={character.hideMyPostsFromThem}
+          hideTheirPostsFromMe={character.hideTheirPostsFromMe}
+        />
+      }
       actions={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <SendMessageButton characterId={character.id} />

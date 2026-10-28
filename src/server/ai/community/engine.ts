@@ -21,6 +21,7 @@ import { createImageGenTool } from '@/server/ai/image-tool';
 import type { GeneratedImage } from '@/server/ai/image';
 import { getCommunityConfig, setSetting } from '@/server/settings';
 import { getFriendIds, areFriends } from '@/server/relationships';
+import { canCharacterSeeMyPosts } from '@/server/friend-permissions';
 import { enqueueEvent, type CommunityEventPayload } from './events';
 
 /* ------------------------------------------------------------------ */
@@ -181,10 +182,12 @@ async function handleNewPost(userId: string, postId: string, authorType: 'user' 
   let candidates = characters.filter((c) => c.id !== authorId);
 
   // 朋友圈可见性：AI 之间的动态只有互为好友的居民才能读到；
-  // 用户的动态对所有居民可见（用户与每个居民都是好友）
+  // 用户的动态默认对所有居民可见，但被设为「仅聊天」或「不让他看我」的居民读不到
   if (authorType === 'ai' && post.characterId) {
     const friendSet = new Set(await getFriendIds(userId, post.characterId));
     candidates = candidates.filter((c) => friendSet.has(c.id));
+  } else if (authorType === 'user') {
+    candidates = candidates.filter((c) => canCharacterSeeMyPosts(c));
   }
 
   // score candidates: personality tendency x interest x recency cooldown
@@ -362,6 +365,9 @@ async function handleAiCommentChain(
     .limit(1);
   if (!actor) return;
 
+  // 朋友权限门禁：被设为「仅聊天」或「不让他看我」的居民读不到我的动态
+  if (post.authorType === 'user' && !canCharacterSeeMyPosts(actor)) return;
+
   /* ---------- 目标是用户的评论/回复：AI 决定是否回应用户 ---------- */
   if (target.authorType === 'user') {
     const ownerName = await userName(userId);
@@ -433,6 +439,9 @@ ${memoryOf.length ? `\n你记得的事：\n${memoryOf.map((m) => `- ${m}`).join(
     .where(eq(aiCharacters.id, target.characterId))
     .limit(1);
   if (!replierChar) return;
+
+  // 我的动态下，另一个 AI 同样需要能看见我的朋友圈才能继续对话链
+  if (post.authorType === 'user' && !canCharacterSeeMyPosts(replierChar)) return;
 
   // 朋友圈好友门禁：非好友的 AI 之间不产生互动（评论/回复链同样受限）
   if (!(await areFriends(userId, actor.id, replierChar.id))) return;
@@ -509,7 +518,16 @@ async function handleUserComment(userId: string, postId: string, commentId: stri
   const config = await getCommunityConfig(userId);
   if (!config.enabled) return;
 
-  const characters = await activeCharacters(userId);
+  const [post] = await db
+    .select({ authorType: posts.authorType })
+    .from(posts)
+    .where(and(eq(posts.id, postId), eq(posts.userId, userId)))
+    .limit(1);
+
+  // 我的动态：只有能看见我朋友圈的居民才会接手互动
+  const characters = (await activeCharacters(userId)).filter((c) =>
+    post?.authorType === 'user' ? canCharacterSeeMyPosts(c) : true,
+  );
   if (characters.length === 0) return;
 
   const [comment] = await db.select().from(comments).where(eq(comments.id, commentId)).limit(1);
@@ -598,8 +616,13 @@ async function handlePulse(userId: string) {
         .orderBy(desc(posts.createdAt))
         .limit(15);
       const friendSet = new Set(await getFriendIds(userId, c.id));
+      const canSeeUserPosts = canCharacterSeeMyPosts(c);
       const visiblePosts = recentPosts
-        .filter((p) => p.authorType === 'user' || (p.characterId && friendSet.has(p.characterId)))
+        .filter((p) =>
+          p.authorType === 'user'
+            ? canSeeUserPosts
+            : !!(p.characterId && friendSet.has(p.characterId)),
+        )
         .slice(0, 3);
       const context = visiblePosts.length
         ? `社区最近这些动态：\n${visiblePosts.map((p) => `- ${p.content.slice(0, 80)}`).join('\n')}`

@@ -71,6 +71,13 @@
       "when": 1788137698503,
       "tag": "0009_brown_tarot",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793164049192,
+      "tag": "0010_windy_nomad",
+      "breakpoints": true
     }
   ]
 }

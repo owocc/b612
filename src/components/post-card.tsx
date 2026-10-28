@@ -123,7 +123,11 @@ export function PostCard({post, isOwnerFeed = true}: {post: FeedPost; isOwnerFee
   const [likeCount, setLikeCount] = useState(post.likeCount);
   const [, startTransition] = useTransition();
 
-  const authorHref = post.authorType === 'ai' ? '/characters' : '/settings/account';
+  // 点击头像/作者名进入智能体详情页（朋友圈可见性、朋友权限都在那里设置）
+  const authorHref =
+    post.authorType === 'ai' && post.characterId
+      ? `/characters/${post.characterId}`
+      : '/settings/account';
 
   const onLike = () => {
     const next = !liked;

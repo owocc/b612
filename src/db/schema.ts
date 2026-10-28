@@ -140,6 +140,18 @@ export const aiCharacters = sqliteTable('ai_characters', {
   /** active | paused */
   status: text('status').notNull().default('active'),
 
+  /* 朋友圈（朋友权限）设置：用户对该居民的单向可见性 */
+  /** 朋友权限：feed_and_chat（朋友圈和聊天）| chat_only（仅聊天，双方都看不到对方朋友圈） */
+  friendPermission: text('friend_permission').notNull().default('feed_and_chat'),
+  /** 不让他看我：该居民看不到我发布的朋友圈（也无法与其互动） */
+  hideMyPostsFromThem: integer('hide_my_posts_from_them', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  /** 不看他：我的朋友圈列表不展示该居民的动态（仍可单独查看 TA 的朋友圈） */
+  hideTheirPostsFromMe: integer('hide_their_posts_from_me', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+
   /* behavior tendencies, 0..1 */
   chattiness: real('chattiness').notNull().default(0.5),
   likeRate: real('like_rate').notNull().default(0.5),
