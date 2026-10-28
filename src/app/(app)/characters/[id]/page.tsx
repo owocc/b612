@@ -8,6 +8,7 @@ import {CharacterProfile} from '@/components/character-profile';
 import {FriendSettingsCard} from '@/components/friend-settings-card';
 import {normalizeFriendPermission} from '@/server/friend-permissions';
 import {CharacterEditor, type CharacterFormValues} from '@/components/character-editor';
+import {CharacterWorkshopLauncher} from '@/components/character-workshop/character-workshop-dialog';
 import {SendMessageButton} from '@/components/send-message-button';
 import {Button} from '@astryxdesign/core/Button';
 import {Settings2} from 'lucide-react';
@@ -168,6 +169,17 @@ export default async function CharacterViewPage({
       actions={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <SendMessageButton characterId={character.id} />
+          <CharacterWorkshopLauncher
+            character={{
+              id: character.id,
+              name: character.name,
+              persona: character.persona,
+              personality: character.personality,
+              interests: character.interests,
+              relationshipToUser: character.relationshipToUser,
+              bio: character.bio,
+            }}
+          />
           <Link href={`/characters/${character.id}?edit=1`} style={{ textDecoration: 'none' }}>
             <Button
               label="编辑居民"

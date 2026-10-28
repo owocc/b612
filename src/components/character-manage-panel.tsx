@@ -28,6 +28,7 @@ import {Table, proportional, pixel} from '@astryxdesign/core/Table';
 import {HStack, VStack} from '@astryxdesign/core/Stack';
 import {UserAvatar} from '@/components/user-avatar';
 import {CharacterEditor, emptyCharacter, type CharacterFormValues} from '@/components/character-editor';
+import {CharacterWorkshopLauncher} from '@/components/character-workshop/character-workshop-dialog';
 import type {CharacterListItem} from '@/components/character-card';
 import {deleteCharacter, setCharacterStatus, triggerCharacterDailyMemoryAction} from '@/server/actions/characters';
 import {useAppToast} from '@/lib/toast';
@@ -496,11 +497,26 @@ export function CharacterManagePanel({
               key: 'actions',
               header: '',
               align: 'end',
-              width: pixel(110),
+              width: pixel(146),
               renderCell: (row) => {
                 const isActive = row.status === 'active';
                 return (
                   <HStack gap={1} vAlign="center" hAlign="end">
+                    <CharacterWorkshopLauncher
+                      character={{
+                        id: row.id,
+                        name: row.name,
+                        persona: row.persona,
+                        personality: row.personality,
+                        interests: row.interests,
+                        relationshipToUser: row.relationshipToUser,
+                        bio: row.bio,
+                      }}
+                      label="人设工坊"
+                      variant="ghost"
+                      size="sm"
+                      isIconOnly
+                    />
                     <button
                       type="button"
                       disabled={pending}
