@@ -27,7 +27,7 @@ export function formatGroupChatContextBlock(ctx: PerceptionContext, options?: { 
 
   const formatMsgContent = (content: string, atts?: Array<{ id: string; originalFilename?: string | null; perception?: { status: string; summary?: string | null; perception?: string | null; ocrText?: string | null } | null }>) => {
     const text = content.trim();
-    if (!atts || atts.length === 0) return text;
+    if (!supportsVision || !atts || atts.length === 0) return text;
     const attachmentBlock = formatAttachmentPromptBlock(atts);
     return text ? `${text}\n${attachmentBlock}` : attachmentBlock;
   };

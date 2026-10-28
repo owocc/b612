@@ -20,13 +20,13 @@ export async function createImageGenTool(args: {
   return {
     generate_image: tool({
       description:
-        '生成一张图片并发送。适合你想分享生活瞬间、看到的东西、创作、表情包等场景。调用后图片会随你的消息一起发出。',
+        'AI 生图工具。当前已支持生图功能，当你在聊天中想要分享生活画面、展示所见或创作、发送表情包、或者对方请求看图时，可以自主决定调用此工具并自行编写具体的生图提示词。生成的图片会自动随你的消息发送给对方。',
       inputSchema: z.object({
         prompt: z
           .string()
           .min(1)
           .max(800)
-          .describe('对图片的完整描述：主体、场景、风格、氛围。用具体的画面语言描述。'),
+          .describe('由你自行编写的图片生成提示词（prompt）：包含画面的核心主体、场景细节、艺术风格与情绪氛围。用具体的画面语言描述。'),
       }),
       execute: async ({ prompt }) => {
         try {
@@ -38,7 +38,7 @@ export async function createImageGenTool(args: {
           args.collected.push(image);
           return {
             ok: true as const,
-            message: '图片已生成并将随消息发出。请继续输出配文（不要在配文里复述图片描述）。',
+            message: '图片已成功生成并将随消息发出。请继续输出你的自然聊天回复（不要在文本里重复这句提示或生图描述）。',
           };
         } catch (err) {
           return {

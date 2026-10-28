@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/db';
-import { conversations, messages, transfers } from '@/db/schema';
+import { conversations, messages, transfers, user } from '@/db/schema';
 import { requireUserId } from '@/lib/session';
 import {
   MAX_SHARES,
@@ -245,7 +245,7 @@ export async function acceptTransferAction(input: z.input<typeof claimSchema>) {
 
     // 如果该转账关联了会话消息，写入一条系统提示并触发 AI 对话轮次
     const [transferRow] = await db
-      .select({ messageId: transfers.messageId })
+      .select({ messageId: transfers.messageId, note: transfers.note })
       .from(transfers)
       .where(and(eq(transfers.id, parsed.data.id), eq(transfers.userId, userId)))
       .limit(1);
@@ -265,9 +265,16 @@ export async function acceptTransferAction(input: z.input<typeof claimSchema>) {
           .limit(1);
 
         if (conv) {
+          const [u] = await db
+            .select({ name: user.name })
+            .from(user)
+            .where(eq(user.id, userId))
+            .limit(1);
+          const userName = u?.name || '朋友';
+
           const now = new Date();
           const systemMsgId = crypto.randomUUID();
-          const noticeContent = `你已确认收取了对方发来的转账（${formatWalletMoney(result.amount, result.currency)}）`;
+          const noticeContent = `${userName} 已确认收下了你的转账（金额：${formatWalletMoney(result.amount, result.currency)}${transferRow.note ? `，备注：${transferRow.note}` : ''}）`;
 
           await db.insert(messages).values({
             id: systemMsgId,

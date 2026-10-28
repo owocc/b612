@@ -340,22 +340,46 @@ export async function runObject<T extends z.ZodType>(opts: {
   }
 }
 
-/** Structured vision analysis with usage tracking */
+/** Structured vision analysis with usage tracking using AI SDK standard API */
 export async function runVisionObject<T extends z.ZodType>(opts: {
   userId: string;
   system: string;
   prompt: string;
   imageUrl: string;
+  mimeType?: string;
   schema: T;
   temperature?: number;
   maxOutputTokens?: number;
+  providerOverride?: ProviderConfigRow;
+  modelIdOverride?: string;
 }): Promise<{ object: z.infer<T>; usageId: string; usage: UsageRecord; resolved: ResolvedModel }> {
-  const resolved = await resolveVisionModel(opts.userId);
-  if (!resolved.enabled) {
-    throw new Error('图片理解功能已停用');
+  let resolved: ResolvedModel;
+  if (opts.providerOverride) {
+    const effectiveModelId = opts.modelIdOverride || getDefaultVisionModelForProvider(opts.providerOverride.providerType);
+    resolved = {
+      provider: opts.providerOverride,
+      modelId: effectiveModelId,
+      supportsVision: supportsVision(opts.providerOverride.providerType, effectiveModelId),
+      temperature: opts.temperature ?? 0.2,
+      topP: null,
+      maxTokens: opts.maxOutputTokens ?? 800,
+    };
+  } else {
+    const visionResolved = await resolveVisionModel(opts.userId);
+    if (!visionResolved.enabled) {
+      throw new Error('图片理解功能已停用');
+    }
+    resolved = visionResolved;
   }
   const start = Date.now();
   try {
+    const isHttpUrl = opts.imageUrl.startsWith('http://') || opts.imageUrl.startsWith('https://');
+    const filePart = {
+      type: 'file' as const,
+      data: isHttpUrl ? new URL(opts.imageUrl) : opts.imageUrl,
+      mediaType: opts.mimeType || 'image/jpeg',
+    };
+
     const result = await generateObject({
       model: createModelFor(resolved.provider, resolved.modelId),
       system: opts.system,
@@ -364,7 +388,7 @@ export async function runVisionObject<T extends z.ZodType>(opts: {
           role: 'user',
           content: [
             { type: 'text', text: opts.prompt },
-            { type: 'image', image: opts.imageUrl },
+            filePart,
           ],
         },
       ],

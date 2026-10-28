@@ -6,6 +6,7 @@ import {
   type MediaPurpose,
 } from '@/server/media';
 import { scheduleMediaPerceptions } from '@/server/ai/vision';
+import { getVisionConfig } from '@/server/settings';
 import type { ImageType } from '@/server/ai/vision-profiles';
 
 export const dynamic = 'force-dynamic';
@@ -90,6 +91,13 @@ export async function POST(req: Request): Promise<Response> {
         rawImageType && ['chat', 'avatar', 'sticker', 'general'].includes(rawImageType)
           ? (rawImageType as ImageType)
           : undefined;
+
+      if (purpose === 'attachment') {
+        const visionCfg = await getVisionConfig(userId);
+        if (!visionCfg.enabled) {
+          return Response.json({ ok: false, error: 'AI 识图功能未开启，当前禁止上传图片' }, { status: 400 });
+        }
+      }
 
       if (!file) {
         return Response.json({ ok: false, error: '未找到上传文件' }, { status: 400 });

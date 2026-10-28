@@ -9,7 +9,7 @@ import {
   notifications,
   user,
 } from '@/db/schema';
-import { runText, runObject, resolveModel, NoProviderError } from './core';
+import { runText, runObject } from './core';
 import { characterSystemPrompt, chatMemoryBlock } from './prompts';
 import {
   buildChatContext,
@@ -19,8 +19,9 @@ import {
 } from './memory';
 import { createHistoryRecallTool } from './recall';
 import { createImageGenTool } from './image-tool';
-import { generateCharacterImage, type GeneratedImage } from './image';
+import type { GeneratedImage } from './image';
 import { formatAttachmentPromptBlock, waitForMediaPerceptions } from './vision';
+import { getVisionConfig } from '@/server/settings';
 import { getMediaForMessages, type MediaAssetView } from '@/server/media';
 import { messageAttachments } from '@/db/schema';
 import {
@@ -31,6 +32,7 @@ import {
   getFriendListForCharacter,
   getOrCreateWalletAccount,
   getPendingTransfersForCharacter,
+  getTransferStatuses,
   getUnclaimedRedPacketsForCharacter,
   getWalletNoticesForCharacter,
   refundExpiredRedPackets,
@@ -71,7 +73,7 @@ export function parseFallbackTurnResponse(
     transferOut: null,
     redPacketOut: null,
   };
-  let text = rawText.trim();
+  const text = rawText.trim();
   if (!text) return result;
 
   const applyObject = (obj: Record<string, unknown>) => {
@@ -345,7 +347,8 @@ export async function processTurn(
     const userName = userInfo?.name || '朋友';
 
     // Step 2: Build real-time context dynamically
-    // Wait for any media perception in recent user messages
+    // Wait for any media perception in recent user messages (only when vision is enabled)
+    const visionCfg = await getVisionConfig(userId);
     const turnUserMessages = await db
       .select()
       .from(messages)
@@ -365,7 +368,7 @@ export async function processTurn(
       allAttachments.push(...atts);
     }
 
-    if (allAttachments.length > 0) {
+    if (visionCfg.enabled && allAttachments.length > 0) {
       await waitForMediaPerceptions(
         userId,
         allAttachments.map((a) => a.id),
@@ -413,7 +416,7 @@ export async function processTurn(
       });
       for (const transfer of pendingTransfers) {
         moneyContextParts.push(
-          `你有一笔转账还没收款：id=${transfer.id}，金额 ${formatWalletMoney(transfer.amount, transfer.currency)}${transfer.note ? `，备注「${transfer.note}」` : ''}。是否收款由你决定；超时未收会退回给对方。`,
+          `${userName} 给你转了一笔转账：id=${transfer.id}，金额 ${formatWalletMoney(transfer.amount, transfer.currency)}${transfer.note ? `，备注「${transfer.note}」` : ''}，当前状态为【待你收款】。你可以在本次回复中决定是否收款（将 id 填入 accept_transfer_ids 即可收款），也可以拒绝或暂时不收。请务必在你的回复消息中对这笔转账做出自然的人设反馈（如表示感谢、惊喜、或者推脱等），响应当前转账状态！`,
         );
         pendingTransferIds.push(transfer.id);
       }
@@ -474,7 +477,7 @@ export async function processTurn(
 - "red_packet_out"：{"to": "user", "amount": 金额元, "shares": 份数, "greeting": "祝福语"}，主动给当前用户发红包（例如过节、祝贺、活跃气氛等）。
 重要规则：
 1. 转账与发红包必须在你当前拥有的钱包余额范围内，单笔金额不超过 N$200。
-2. 当收到用户的转账或红包时，请在 messages 气泡中自然地给予人设契合的情绪反馈（如感谢、惊喜、傲娇、推辞等），不要假装没看见。
+2. 当收到用户的转账或对方已确认收款时，请在 messages 气泡中根据当前状态自然地给予人设契合的情绪反馈（如收到转账时感谢、惊喜、推辞；对方收款后询问、寒暄或表达开心），明确响应当前的状态，不要假装没看见。
 3. 若你执行了转账(transfer_out)或发红包(red_packet_out)，系统会自动生成对应的转账/红包卡片，你的 messages 只需要说你的心里话，不要在文本里手写假卡片格式。`;
     const recallTool = createHistoryRecallTool({
       userId,
@@ -482,33 +485,90 @@ export async function processTurn(
       currentConversationId: conversationId,
     });
 
-    // 钱包：AI 自动拆开用户发来且未领取的红包（48h 内），并把结果注入上下文，
-    // 让回复自然地提到收红包这件事
+    // AI 生图工具与能力检测
+    const collectedImages: GeneratedImage[] = [];
+    const imageToolSet = await createImageGenTool({
+      userId,
+      characterId,
+      collected: collectedImages,
+    });
+    const hasImageGen = Object.keys(imageToolSet).length > 0;
+    const tools = {
+      searchHistory: recallTool,
+      ...imageToolSet,
+    };
+
+    const imageCapabilityBlock = hasImageGen
+      ? `\n\n【AI 生图能力】当前系统已支持 AI 生图功能。你拥有 generate_image 工具，当你在与 ${userName} 聊天过程中适合配图（例如你主动分享生活画面、展示看到或创作的内容、发表情包、或对方希望看图）时，你可以自主决定调用 generate_image 工具，并由你自己编写具体的生图提示词（prompt）。调用后图片会自动随你的消息发送给对方。`
+      : '';
+    const fullSystem = system + imageCapabilityBlock;
+
+    // 获取历史转账状态，注入实时上下文
+    const parseMsgPayload = (raw: unknown): Record<string, unknown> => {
+      if (!raw) return {};
+      if (typeof raw === 'object') return raw as Record<string, unknown>;
+      if (typeof raw === 'string') {
+        try {
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+        } catch {
+          return {};
+        }
+      }
+      return {};
+    };
+
+    const recentTransferIds: string[] = [];
+    for (const m of recent) {
+      if (m.type === 'transfer') {
+        const p = parseMsgPayload(m.payload);
+        if (typeof p.transferId === 'string' && p.transferId) {
+          recentTransferIds.push(p.transferId);
+        }
+      }
+    }
+    const transferStatusMap = await getTransferStatuses(userId, recentTransferIds);
+
     // Map recent history into ModelMessage format
     const contextMessages: ModelMessage[] = recent.map((m) => {
       const isAssistant = m.role === 'assistant';
       const isSystem = m.role === 'system';
       const promptBlocks: string[] = [];
 
-      if (!isAssistant && !isSystem && m.attachments && m.attachments.length > 0) {
+      if (visionCfg.enabled && !isAssistant && !isSystem && m.attachments && m.attachments.length > 0) {
         const attachmentBlock = formatAttachmentPromptBlock(m.attachments);
         if (attachmentBlock) promptBlocks.push(attachmentBlock);
       }
 
-      // 转账/红包消息（content 为空或仅祝福语）转成 AI 可读的结构化描述
-      if (m.type === 'transfer' || m.type === 'red_packet') {
-        const payload = (m.payload ?? {}) as Record<string, unknown>;
+      // 转账/红包消息（content 为空或仅祝福语）转成 AI 可读的结构化描述并标注实时状态
+      if (m.type === 'transfer') {
+        const payload = parseMsgPayload(m.payload);
+        const transferId = String(payload.transferId || '');
+        const statusInfo = transferStatusMap.get(transferId);
+        const status = statusInfo?.status ?? 'pending';
+        const statusLabel =
+          status === 'claimed'
+            ? (isAssistant ? '对方已收款' : '你已收款')
+            : status === 'expired'
+              ? '已超时退回'
+              : (isAssistant ? '待对方收款' : '待你收款');
+        const amount = typeof payload.amount === 'number' ? payload.amount : 0;
+        const moneyText = `[转账] ${isAssistant ? `你给 ${userName} 转账了` : `${userName} 给你转账了`}${amount ? ` ${formatWalletMoney(amount)}` : ''}（当前状态：${statusLabel}）${typeof payload.note === 'string' && payload.note ? `，备注：${payload.note}` : ''}`;
+        promptBlocks.push(moneyText);
+      } else if (m.type === 'red_packet') {
+        const payload = parseMsgPayload(m.payload);
         const amount = typeof payload.amount === 'number' ? payload.amount : typeof payload.totalAmount === 'number' ? payload.totalAmount : 0;
-        const moneyText =
-          m.type === 'transfer'
-            ? `[转账] ${isAssistant ? `你给 ${userName} 转账了` : `${userName} 给你转账了`}${amount ? ` ${formatWalletMoney(amount)}` : ''}${typeof payload.note === 'string' && payload.note ? `，备注：${payload.note}` : ''}`
-            : `[红包] ${isAssistant ? `你发给 ${userName}` : `${userName} 发给你`}一个红包${typeof payload.greeting === 'string' && payload.greeting ? `「${payload.greeting}」` : ''}${amount ? `，共 ${formatWalletMoney(amount)}` : ''}${typeof payload.shareCount === 'number' ? ` / ${payload.shareCount} 份` : ''}`;
+        const moneyText = `[红包] ${isAssistant ? `你发给 ${userName}` : `${userName} 发给你`}一个红包${typeof payload.greeting === 'string' && payload.greeting ? `「${payload.greeting}」` : ''}${amount ? `，共 ${formatWalletMoney(amount)}` : ''}${typeof payload.shareCount === 'number' ? ` / ${payload.shareCount} 份` : ''}`;
         promptBlocks.push(moneyText);
       }
 
       if (m.content) {
         if (isSystem) {
-          promptBlocks.push(`[系统提示：${m.content}。如果之前有没说完的话或对方正在等你的消息，请自然接着回复]`);
+          if (m.content.includes('已确认收下了你的转账')) {
+            promptBlocks.push(`[系统提示：${m.content}。对方已经成功收款，请根据当前状态自然回应对方（如询问是否收到、表达开心、提醒买点喜欢的等）]`);
+          } else {
+            promptBlocks.push(`[系统提示：${m.content}。如果之前有没说完的话或对方正在等你的消息，请自然接着回复]`);
+          }
         } else {
           promptBlocks.push(m.content);
         }
@@ -567,72 +627,100 @@ export async function processTurn(
     let redPacketOut: { to: string; amount: number; shares: number | null; greeting: string | null } | null = null;
     let usageId: string | undefined;
 
-    try {
-      const generated = await runObject({
-        userId,
-        characterId,
-        callType: 'chat',
-        system,
-        messages: contextMessages,
-        schema: responseSchema,
-        schemaName: 'TurnResponse',
-        schemaDescription: 'Natural chat response broken into separate message bubbles',
-        tools: {
-          searchHistory: recallTool,
-        },
-      });
-
-      generatedBubbleTexts = (generated?.messages || []).filter((t) => t && t.trim().length > 0);
-      // 钱包协议（固定 JSON 字段，服务端只认本会话确实有效的 id）
-      claimRedPacketIds = (generated?.claim_red_packet_ids ?? []).filter((id: string) =>
-        unclaimedRedPacketIds.includes(id),
-      );
-      acceptTransferIds = (generated?.accept_transfer_ids ?? []).filter((id: string) =>
-        pendingTransferIds.includes(id),
-      );
-      transferOut =
-        generated?.transfer_out && generated.transfer_out.amount > 0
-          ? {
-              to: generated.transfer_out.to ?? 'user',
-              amount: generated.transfer_out.amount,
-              note: generated.transfer_out.note ?? null,
-            }
-          : null;
-      redPacketOut =
-        generated?.red_packet_out && generated.red_packet_out.amount > 0
-          ? {
-              to: generated.red_packet_out.to ?? 'user',
-              amount: generated.red_packet_out.amount,
-              shares: generated.red_packet_out.shares ?? 1,
-              greeting: generated.red_packet_out.greeting ?? '恭喜发财，大吉大利',
-            }
-          : null;
-    } catch (objErr) {
-      // Fallback: If structured generation fails, generate text and split on double newlines
-      console.warn('[turn-engine] structured generation fallback to text generation', objErr);
-      const rawText = await runText({
-        userId,
-        characterId,
-        callType: 'chat',
-        system,
-        messages: contextMessages,
-        tools: {
-          searchHistory: recallTool,
-        },
-      });
-
-      if (rawText && rawText.trim()) {
-        // 模型可能整段输出固定 JSON（常带 ```json 围栏），统一解析，
-        // 绝不让原始 JSON 文本落进消息内容
-        const parsed = parseFallbackTurnResponse(rawText, {
-          redPacketIds: unclaimedRedPacketIds,
-          transferIds: pendingTransferIds,
+    // 优先调用具备生图工具的对话轮次
+    if (hasImageGen) {
+      try {
+        const rawText = await runText({
+          userId,
+          characterId,
+          callType: 'chat',
+          system: fullSystem,
+          messages: contextMessages,
+          tools,
+          maxSteps: 5,
         });
-        generatedBubbleTexts = parsed.messages;
-        claimRedPacketIds = parsed.claimRedPacketIds;
-        acceptTransferIds = parsed.acceptTransferIds;
-        transferOut = parsed.transferOut;
-        redPacketOut = parsed.redPacketOut;
+
+        if (rawText && rawText.trim()) {
+          const parsed = parseFallbackTurnResponse(rawText, {
+            redPacketIds: unclaimedRedPacketIds,
+            transferIds: pendingTransferIds,
+          });
+          generatedBubbleTexts = parsed.messages;
+          claimRedPacketIds = parsed.claimRedPacketIds;
+          acceptTransferIds = parsed.acceptTransferIds;
+          transferOut = parsed.transferOut;
+          redPacketOut = parsed.redPacketOut;
+        }
+      } catch (toolRunErr) {
+        console.warn('[turn-engine] generation with image tool failed, falling back to structured run', toolRunErr);
+      }
+    }
+
+    if (generatedBubbleTexts.length === 0) {
+      try {
+        const generated = await runObject({
+          userId,
+          characterId,
+          callType: 'chat',
+          system: fullSystem,
+          messages: contextMessages,
+          schema: responseSchema,
+          schemaName: 'TurnResponse',
+          schemaDescription: 'Natural chat response broken into separate message bubbles',
+          tools,
+        });
+
+        generatedBubbleTexts = (generated?.messages || []).filter((t) => t && t.trim().length > 0);
+        // 钱包协议（固定 JSON 字段，服务端只认本会话确实有效的 id）
+        claimRedPacketIds = (generated?.claim_red_packet_ids ?? []).filter((id: string) =>
+          unclaimedRedPacketIds.includes(id),
+        );
+        acceptTransferIds = (generated?.accept_transfer_ids ?? []).filter((id: string) =>
+          pendingTransferIds.includes(id),
+        );
+        transferOut =
+          generated?.transfer_out && generated.transfer_out.amount > 0
+            ? {
+                to: generated.transfer_out.to ?? 'user',
+                amount: generated.transfer_out.amount,
+                note: generated.transfer_out.note ?? null,
+              }
+            : null;
+        redPacketOut =
+          generated?.red_packet_out && generated.red_packet_out.amount > 0
+            ? {
+                to: generated.red_packet_out.to ?? 'user',
+                amount: generated.red_packet_out.amount,
+                shares: generated.red_packet_out.shares ?? 1,
+                greeting: generated.red_packet_out.greeting ?? '恭喜发财，大吉大利',
+              }
+            : null;
+      } catch (objErr) {
+        // Fallback: If structured generation fails, generate text and split on double newlines
+        console.warn('[turn-engine] structured generation fallback to text generation', objErr);
+        const rawText = await runText({
+          userId,
+          characterId,
+          callType: 'chat',
+          system: fullSystem,
+          messages: contextMessages,
+          tools,
+          maxSteps: 3,
+        });
+
+        if (rawText && rawText.trim()) {
+          // 模型可能整段输出固定 JSON（常带 ```json 围栏），统一解析，
+          // 绝不让原始 JSON 文本落进消息内容
+          const parsed = parseFallbackTurnResponse(rawText, {
+            redPacketIds: unclaimedRedPacketIds,
+            transferIds: pendingTransferIds,
+          });
+          generatedBubbleTexts = parsed.messages;
+          claimRedPacketIds = parsed.claimRedPacketIds;
+          acceptTransferIds = parsed.acceptTransferIds;
+          transferOut = parsed.transferOut;
+          redPacketOut = parsed.redPacketOut;
+        }
       }
     }
 
@@ -640,43 +728,8 @@ export async function processTurn(
       generatedBubbleTexts = ['嗯。'];
     }
 
-    // AI 生图：仅在生图配置启用时进行一次决策，模型依据人设和上下文自行判断是否配图；
-    // 未配置时 resolveImageModel 返回 enabled=false，这里完全不产生任何调用。
-    let chatImage: GeneratedImage | null = null;
-    const imageToolSet = await createImageGenTool({ userId, characterId, collected: [] });
-    if (Object.keys(imageToolSet).length > 0) {
-      try {
-        const decision = await runObject({
-          userId,
-          characterId,
-          callType: 'chat',
-          system,
-          messages: [
-            ...contextMessages,
-            {
-              role: 'user' as const,
-              content: `【内部决策，不要回复用户】基于以上对话和你的人设，判断你现在是否适合随消息发一张图片（例如对方想看某个东西、你在分享生活、用画面表达更自然）。没有明确需要就选择 false。`,
-            },
-          ],
-          schema: z.object({
-            act: z.boolean().describe('是否需要生成一张图片随消息发出'),
-            prompt: z.string().describe('act 为 true 时的图片画面描述；为 false 时留空'),
-          }),
-          temperature: 0.7,
-          maxOutputTokens: 300,
-        });
-        if (decision.act && decision.prompt.trim()) {
-          chatImage = await generateCharacterImage({
-            userId,
-            characterId,
-            prompt: decision.prompt.trim(),
-          });
-        }
-      } catch (imgErr) {
-        // 生图失败不影响文字消息
-        console.error('[turn-engine] image generation skipped', imgErr);
-      }
-    }
+    // AI 生图结果（由模型在对话中自主调用 generate_image 工具收集生成）
+    const chatImage: GeneratedImage | null = collectedImages[0] ?? null;
 
     // Step 4: Fencing check & Commit messages atomically
     const commitTime = new Date();
