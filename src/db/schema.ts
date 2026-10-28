@@ -725,6 +725,68 @@ export const appSettings = sqliteTable('app_settings', {
 }, (t) => [uniqueIndex('app_settings_unique_idx').on(t.userId, t.key)]);
 
 /* ------------------------------------------------------------------ */
+/* Character visual assets (人设工坊)                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Allowed visual asset types for a character:
+ * - base          基础形象（主参考图）
+ * - full_body     全身标准图
+ * - three_view    多视角（三视图）
+ * - detail_face   头部 / 脸型特写
+ * - detail_outfit 服饰 / 道具特写
+ * - custom        自定义 / 外部导入
+ */
+export const CHARACTER_ASSET_TYPES = [
+  'base',
+  'full_body',
+  'three_view',
+  'detail_face',
+  'detail_outfit',
+  'custom',
+] as const;
+
+export type CharacterAssetType = (typeof CHARACTER_ASSET_TYPES)[number];
+
+/** upload | external_url | generated | seed */
+export const CHARACTER_ASSET_SOURCES = ['upload', 'external_url', 'generated', 'seed'] as const;
+
+export type CharacterAssetSource = (typeof CHARACTER_ASSET_SOURCES)[number];
+
+export const characterAssets = sqliteTable('character_assets', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  characterId: text('character_id')
+    .notNull()
+    .references(() => aiCharacters.id, { onDelete: 'cascade' }),
+  /** base | full_body | three_view | detail_face | detail_outfit | custom */
+  type: text('type').notNull().default('custom'),
+  /** public/private blob URL, external URL, or data URL in local dev */
+  url: text('url').notNull(),
+  /** blob pathname, used to delete the related storage object */
+  blobPathname: text('blob_pathname'),
+  mimeType: text('mime_type').notNull().default('image/jpeg'),
+  fileSize: integer('file_size').notNull().default(0),
+  width: integer('width'),
+  height: integer('height'),
+  /** whether this asset can be injected as a reference image when generating */
+  isEnabled: integer('is_enabled', { mode: 'boolean' }).notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  /** JSON string: generation params, prompt, source platform, original URL … */
+  metadata: text('metadata'),
+  source: text('source').notNull().default('upload'),
+  createdAt: ts('created_at').notNull().default(now()),
+  updatedAt: ts('updated_at').notNull().default(now()),
+}, (t) => [
+  index('character_assets_character_idx').on(t.characterId, t.sortOrder),
+  index('character_assets_user_idx').on(t.userId),
+  index('character_assets_character_type_idx').on(t.characterId, t.type),
+  index('character_assets_enabled_idx').on(t.characterId, t.isEnabled),
+]);
+
+/* ------------------------------------------------------------------ */
 /* Media & Attachments (Vercel Blob + Media Assets)                  */
 /* ------------------------------------------------------------------ */
 
