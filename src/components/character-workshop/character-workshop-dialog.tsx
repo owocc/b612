@@ -22,7 +22,7 @@ import { Banner } from '@astryxdesign/core/Banner';
 import { Collapsible } from '@astryxdesign/core/Collapsible';
 import { Stepper, Step } from '@astryxdesign/core/Stepper';
 import { HStack, VStack } from '@astryxdesign/core/Stack';
-import { MediaImage } from '@/components/media-image';
+import { SafeImage } from '@/components/safe-image';
 import { useAppToast } from '@/lib/toast';
 import {
   WORKSHOP_DETAIL_TARGETS,
@@ -671,7 +671,7 @@ export function CharacterWorkshopDialog({
           <VStack gap={4}>
             <div {...stylex.props(styles.referenceBar)}>
               {fullReferenceUrl ? (
-                <MediaImage
+                <SafeImage
                   src={fullReferenceUrl}
                   alt="基础形象参考"
                   xstyle={styles.referenceThumb}
@@ -765,7 +765,7 @@ export function CharacterWorkshopDialog({
           <VStack gap={4}>
             <div {...stylex.props(styles.referenceBar)}>
               {deriveReferenceUrl ? (
-                <MediaImage
+                <SafeImage
                   src={deriveReferenceUrl}
                   alt="全身图参考"
                   xstyle={styles.referenceThumb}

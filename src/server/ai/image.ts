@@ -78,9 +78,20 @@ export type GeneratedImage = {
   height: number | null;
 };
 
-const MAX_REFERENCE_IMAGES = 4;
+export const MAX_REFERENCE_IMAGES = 4;
 const REFERENCE_FETCH_TIMEOUT_MS = 15_000;
 const MAX_REFERENCE_BYTES = 15 * 1024 * 1024;
+
+/**
+ * 服务商图生图能力差异很大：识别「不支持参考图」类错误。
+ * 命中时调用方可以退回纯文本生图，而不是直接把失败抛给用户。
+ */
+export function isReferenceUnsupportedError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /(images?|image[_ ]?(input|url|edit)).{0,40}(not supported|unsupported|unknown|invalid)/i.test(
+    message,
+  );
+}
 
 function decodeImageDataUrl(url: string): DataContent {
   const match = /^data:(image\/[a-z0-9.+-]+);base64,([\s\S]+)$/i.exec(url);
@@ -144,9 +155,25 @@ async function buildImagePrompt(
 ): Promise<string | { text: string; images: DataContent[] }> {
   const references = (referenceImages ?? []).filter((url) => url.trim().length > 0);
   if (references.length === 0) return text;
-  const images = await Promise.all(
+
+  // 单张参考图失效（被删 / 过期外链）不应拖垮整次生图：跳过并继续
+  const settled = await Promise.allSettled(
     references.slice(0, MAX_REFERENCE_IMAGES).map(loadReferenceImage),
   );
+  const images: DataContent[] = [];
+  settled.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      images.push(result.value);
+    } else {
+      // 只记下标与原因，不打印图片 URL（可能含私有 blob token 路径）
+      console.warn(
+        '[image] 参考图加载失败，已跳过',
+        index,
+        result.reason instanceof Error ? result.reason.message : String(result.reason),
+      );
+    }
+  });
+  if (images.length === 0) return text;
   return { text, images };
 }
 

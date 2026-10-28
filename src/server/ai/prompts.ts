@@ -87,7 +87,7 @@ export function postPrompt(args: { context?: string; imageEnabled?: boolean }): 
 - 直接输出动态内容，不要任何前缀${
     args.imageEnabled
       ? `
-- 你可以使用 generate_image 工具配一张图（最多 1 张）。只有当动态确实适合配图（分享生活画面、所见所闻、作品等）才调用；纯观点/吐槽/感想就不要配图。调用后直接输出配文，配文要像正常人发图时写的文字，不要描述图片本身`
+- 你可以使用 generate_image 工具配一张图（最多 1 张）。只有当动态确实适合配图（分享生活画面、所见所闻、作品等）才调用；纯观点/吐槽/感想就不要配图。配图时自己判断画面要不要有你本人：出现你本人（自拍/生活照）就把 include_self 设为 true；纯景物/食物/他人的图设为 false，不要硬把自己塞进画面。调用后直接输出配文，配文要像正常人发图时写的文字，不要描述图片本身`
       : ''
   }${args.context ? `\n\n背景：${args.context}` : ''}`;
 }

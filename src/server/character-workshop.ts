@@ -9,7 +9,7 @@ import {
   type WorkshopStage,
   type WorkshopTarget,
 } from '@/lib/character-workshop';
-import { generateCharacterImage, resolveImageModel } from '@/server/ai/image';
+import { generateCharacterImage, isReferenceUnsupportedError, resolveImageModel } from '@/server/ai/image';
 import {
   attachCharacterAssetsFromUrls,
   requireOwnedCharacter,
@@ -98,14 +98,6 @@ function sanitizeReferenceUrls(urls: string[] | undefined): string[] {
     .map((url) => url.trim())
     .filter((url) => url.length > 0)
     .slice(0, MAX_REFERENCE_IMAGES);
-}
-
-/** 服务商的图生图能力差异很大：识别「不支持参考图」类错误，用于降级重试 */
-function isReferenceUnsupportedError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err);
-  return /(images?|image[_ ]?(input|url|edit)).{0,40}(not supported|unsupported|unknown|invalid)/i.test(
-    message,
-  );
 }
 
 /**

@@ -22,7 +22,7 @@ import { Switch } from '@astryxdesign/core/Switch';
 import { Text } from '@astryxdesign/core/Text';
 import { Token } from '@astryxdesign/core/Token';
 import { HStack, VStack } from '@astryxdesign/core/Stack';
-import { MediaImage } from '@/components/media-image';
+import { SafeImage } from '@/components/safe-image';
 import { MediaLightbox } from '@/components/media-lightbox';
 import { useAppToast } from '@/lib/toast';
 import {
@@ -874,7 +874,7 @@ export function CharacterAssetsPanel({
                   onClick={() => setLightboxAsset(asset)}
                   aria-label={`查看大图：${CHARACTER_ASSET_TYPE_META[asset.type].label}`}
                 >
-                  <MediaImage
+                  <SafeImage
                     src={asset.url}
                     alt={CHARACTER_ASSET_TYPE_META[asset.type].label}
                     xstyle={styles.thumb}
@@ -986,7 +986,7 @@ export function CharacterAssetsPanel({
             />
             <div {...stylex.props(styles.dialogBody)}>
               <HStack gap={3} vAlign="center">
-                <MediaImage
+                <SafeImage
                   src={deleteTarget.url}
                   alt="待删除素材"
                   xstyle={styles.confirmThumb}
@@ -1119,7 +1119,7 @@ export function CharacterAssetsPanel({
               <div {...stylex.props(styles.fileList)}>
                 {importState.files.map((item) => (
                   <div key={item.id} {...stylex.props(styles.fileRow)}>
-                    <MediaImage
+                    <SafeImage
                       src={item.previewUrl}
                       alt={item.file.name}
                       xstyle={styles.fileThumb}
