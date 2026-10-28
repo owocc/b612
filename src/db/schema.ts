@@ -218,6 +218,14 @@ export const conversations = sqliteTable('conversations', {
   summarizedCount: integer('summarized_count').notNull().default(0),
   lastMessageAt: ts('last_message_at'),
   lastReadAt: ts('last_read_at'),
+  /** 会话列表状态（仅元数据，不触碰历史消息） */
+  isPinned: integer('is_pinned', { mode: 'boolean' }).notNull().default(false),
+  pinnedAt: ts('pinned_at'),
+  isArchived: integer('is_archived', { mode: 'boolean' }).notNull().default(false),
+  archivedAt: ts('archived_at'),
+  /** 软删除：仅从列表隐藏，历史聊天记录保留 */
+  isHidden: integer('is_hidden', { mode: 'boolean' }).notNull().default(false),
+  hiddenAt: ts('hidden_at'),
   createdAt: ts('created_at').notNull().default(now()),
 }, (t) => [
   index('conversations_user_idx').on(t.userId),
@@ -449,6 +457,12 @@ export const groupMembers = sqliteTable('group_members', {
   /** normal | muted | active | urgent */
   attentionLevel: text('attention_level').notNull().default('normal'),
   isPinned: integer('is_pinned', { mode: 'boolean' }).notNull().default(false),
+  pinnedAt: ts('pinned_at'),
+  isArchived: integer('is_archived', { mode: 'boolean' }).notNull().default(false),
+  archivedAt: ts('archived_at'),
+  /** 软删除：仅从列表隐藏，群聊历史记录保留 */
+  isHidden: integer('is_hidden', { mode: 'boolean' }).notNull().default(false),
+  hiddenAt: ts('hidden_at'),
   createdAt: ts('created_at').notNull().default(now()),
   updatedAt: ts('updated_at').notNull().default(now()),
 }, (t) => [
