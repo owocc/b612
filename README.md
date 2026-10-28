@@ -72,6 +72,37 @@ curl -X POST /api/characters/<id>/assets \
 - `PATCH` 用 `metadata` 整体替换，或 `metadataPatch` 浅合并；`isEnabled=false` 的资产不会进入后续生图参考图。
 - Stage 4 可直接调用 `getCharacterReferenceImageUrls(userId, characterId)` 获取已启用参考图（基础形象优先）。
 
+## 人设工坊（三阶段向导）
+
+入口：角色详情页「人设工坊」按钮，或「管理联系人」表格行操作。向导以弹窗形式分三步执行，每一步都提供「跳过此步骤」与「手动上传图片」。
+
+1. **基础形象**：上传参考图（可多张，上传即入库）或用形象描述生成初版形象。
+2. **稳定全身图**：携带基础形象作为参考图，注入固定全身模板（`full body standing pose, neutral white background, defined height proportions, head-to-toe shot`）锁定比例。
+3. **多视角与特写**：以全身图为参考，按固定模板派生正面 / 侧面 / 背面 / 3/4 侧面，以及头部与服饰特写；支持单张生成、批量生成与逐项上传。
+
+固定提示词集中在 `src/lib/character-workshop.ts`（版本 `WORKSHOP_PROMPT_VERSION`），UI 只读展示，客户端无法改写；跨阶段共用身份锁定段落，第三阶段只切换机位与裁切。生成结果入库时会把 `workshopStage` / `workshopTarget` / `prompt` / `promptVersion` 写入资产 `metadata`。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/characters/[id]/workshop/generate` | 生成一张预览图（不入库）：`{ target, description?, referenceUrls? }` |
+| POST | `/api/characters/[id]/workshop/assets` | 将确认的预览落库：`{ items: [{ url, target, prompt? }] }` |
+
+```bash
+# 第二阶段：带基础形象参考图生成全身标准图
+curl -X POST /api/characters/<id>/workshop/generate \
+  -H 'content-type: application/json' \
+  -d '{"target":"full_body","referenceUrls":["https://cdn.example.com/base.png"]}'
+
+# 第三阶段确认后入库（资产类型由 target 服务端映射）
+curl -X POST /api/characters/<id>/workshop/assets \
+  -H 'content-type: application/json' \
+  -d '{"items":[{"url":"https://cdn.example.com/front.png","target":"front"}]}'
+```
+
+- 生成走 `src/server/ai/image.ts`：参考图最多 4 张，支持自有 blob URL / 外链 / data URL；模型不支持图生图时自动降级为纯文本模板并在响应里返回 `warning`，不阻断向导。
+- 未启用 AI 生图时生成接口返回 `image_gen_not_configured`，向导仍可上传 / 跳过继续。
+- 上传走 Stage 1 的 `POST /api/characters/[id]/assets`（multipart，`type` + `metadata` 自动标注阶段与目标）；生成结果通过 `attachCharacterAssetsFromUrls()` 直接挂载，避免二次下载转存。
+
 ## 架构要点
 
 ```

@@ -1,4 +1,4 @@
-import { generateImage, type ImageModel } from 'ai';
+import { generateImage, type DataContent, type ImageModel } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import {
@@ -78,6 +78,72 @@ export type GeneratedImage = {
   height: number | null;
 };
 
+const MAX_REFERENCE_IMAGES = 4;
+const REFERENCE_FETCH_TIMEOUT_MS = 15_000;
+const MAX_REFERENCE_BYTES = 15 * 1024 * 1024;
+
+function decodeImageDataUrl(url: string): DataContent {
+  const match = /^data:(image\/[a-z0-9.+-]+);base64,([\s\S]+)$/i.exec(url);
+  if (!match) throw new Error('参考图 data URL 格式不正确');
+  return new Uint8Array(Buffer.from(match[2], 'base64'));
+}
+
+/**
+ * 参考图 URL → AI SDK DataContent。
+ * 支持 data URL（本地生成的预览图）与 http(s) 地址（自有 blob / 素材库）。
+ */
+async function loadReferenceImage(url: string): Promise<DataContent> {
+  if (url.startsWith('data:')) return decodeImageDataUrl(url);
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('参考图 URL 格式不正确');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('参考图仅支持 http(s) 或 data URL');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(parsed.toString(), {
+      signal: AbortSignal.timeout(REFERENCE_FETCH_TIMEOUT_MS),
+      headers: { accept: 'image/*' },
+    });
+  } catch {
+    throw new Error('参考图读取失败或超时');
+  }
+  if (!response.ok) {
+    throw new Error(`参考图读取失败（HTTP ${response.status}）`);
+  }
+  const declaredLength = Number(response.headers.get('content-length') ?? 0);
+  if (declaredLength > MAX_REFERENCE_BYTES) {
+    throw new Error('参考图超过 15MB 限制');
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > MAX_REFERENCE_BYTES) {
+    throw new Error('参考图超过 15MB 限制');
+  }
+  const mediaType = response.headers.get('content-type')?.split(';')[0] ?? 'image/png';
+  if (!mediaType.startsWith('image/')) {
+    throw new Error('参考图地址返回的不是图片');
+  }
+  return new Uint8Array(buffer);
+}
+
+async function buildImagePrompt(
+  text: string,
+  referenceImages: string[] | undefined,
+): Promise<string | { text: string; images: DataContent[] }> {
+  const references = (referenceImages ?? []).filter((url) => url.trim().length > 0);
+  if (references.length === 0) return text;
+  const images = await Promise.all(
+    references.slice(0, MAX_REFERENCE_IMAGES).map(loadReferenceImage),
+  );
+  return { text, images };
+}
+
 /**
  * 以某个角色（或系统）身份生成一张图片并落库为 media asset。
  * `persist=false` 时仅生成不入库（设置页测试用）。
@@ -86,6 +152,8 @@ export async function generateCharacterImage(args: {
   userId: string;
   characterId: string | null;
   prompt: string;
+  /** 图生图参考图（URL 或 data URL），最多 4 张 */
+  referenceImages?: string[];
   persist?: boolean;
 }): Promise<GeneratedImage> {
   const resolved = await resolveImageModel(args.userId);
@@ -97,7 +165,7 @@ export async function generateCharacterImage(args: {
   try {
     const result = await generateImage({
       model: createImageModelFor(resolved.provider, resolved.modelId),
-      prompt: args.prompt,
+      prompt: await buildImagePrompt(args.prompt, args.referenceImages),
       maxRetries: 1,
     });
 

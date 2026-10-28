@@ -575,18 +575,21 @@ async function persistLinkedAsset(args: {
   url: string;
   input: CharacterAssetInputBase;
   defaultSortOrder: number;
+  /** 默认 external_url；工坊生成结果可传 generated，便于资产来源区分 */
+  source?: CharacterAssetSource;
 }): Promise<CharacterAssetView> {
   const now = new Date();
   const id = crypto.randomUUID();
   const type = args.input.type ?? 'custom';
   const sortOrder = args.input.sortOrder ?? args.defaultSortOrder;
-  const metadata: CharacterAssetMetadata = {
-    ...(args.input.metadata ?? {}),
-    sourceUrl: args.url,
-    importMode: 'link',
-  };
-  const mimeType =
-    /\.png(\?|$)/i.test(args.url)
+  // 生成结果（source=generated）本身就是自有存储，不需要再记「外链来源」
+  const metadata: CharacterAssetMetadata =
+    args.source && args.source !== 'external_url'
+      ? { ...(args.input.metadata ?? {}) }
+      : { ...(args.input.metadata ?? {}), sourceUrl: args.url, importMode: 'link' };
+  const mimeType = args.url.startsWith('data:')
+    ? (/^data:(image\/[a-z0-9.+-]+);base64,/i.exec(args.url)?.[1] ?? 'image/png')
+    : /\.png(\?|$)/i.test(args.url)
       ? 'image/png'
       : /\.webp(\?|$)/i.test(args.url)
         ? 'image/webp'
@@ -608,7 +611,7 @@ async function persistLinkedAsset(args: {
     isEnabled: args.input.isEnabled ?? true,
     sortOrder,
     metadata: serializeMetadata(metadata),
-    source: 'external_url',
+    source: args.source ?? 'external_url',
     createdAt: now,
     updatedAt: now,
   });
@@ -626,10 +629,59 @@ async function persistLinkedAsset(args: {
     isEnabled: args.input.isEnabled ?? true,
     sortOrder,
     metadata,
-    source: 'external_url',
+    source: args.source ?? 'external_url',
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   };
+}
+
+/**
+ * 直接把已有图片 URL 挂到角色资产（不下载、不转存）。
+ * 用于「已经在自有存储里的生成结果」：工坊生成的图属于 media_assets，
+ * 这里只建立角色资产引用，blobPathname 留空，删除资产时不会误删共享 blob。
+ *
+ * 与 importCharacterAssetsFromUrls 的 mirror 模式相比少了二次下载/转存。
+ */
+export async function attachCharacterAssetsFromUrls(
+  userId: string,
+  characterId: string,
+  items: (CharacterAssetInputBase & { url: string })[],
+  options?: { source?: CharacterAssetSource },
+): Promise<BatchAssetOutcome> {
+  await requireOwnedCharacter(userId, characterId);
+  const assets: CharacterAssetView[] = [];
+  const failed: { index: number; error: string }[] = [];
+  let order = await nextSortOrder(characterId);
+
+  for (const [index, item] of items.entries()) {
+    try {
+      // 自有储存的 blob URL 或本地开发的 data URL 都允许直接挂载
+      if (item.url.startsWith('data:')) {
+        if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(item.url)) {
+          throw new CharacterAssetError('不支持的图片 data URL', 400, 'invalid_url');
+        }
+      } else {
+        assertSafeExternalUrl(item.url);
+      }
+      const asset = await persistLinkedAsset({
+        userId,
+        characterId,
+        url: item.url,
+        input: item,
+        defaultSortOrder: order,
+        source: options?.source ?? 'generated',
+      });
+      order += 10;
+      assets.push(asset);
+    } catch (err) {
+      failed.push({
+        index,
+        error: err instanceof Error ? err.message : '资产保存失败',
+      });
+    }
+  }
+
+  return { assets, failed };
 }
 
 /**
