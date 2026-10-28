@@ -22,6 +22,7 @@ import { Banner } from '@astryxdesign/core/Banner';
 import { Collapsible } from '@astryxdesign/core/Collapsible';
 import { Stepper, Step } from '@astryxdesign/core/Stepper';
 import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { MediaImage } from '@/components/media-image';
 import { useAppToast } from '@/lib/toast';
 import {
   WORKSHOP_DETAIL_TARGETS,
@@ -39,6 +40,10 @@ import { WorkshopEmptyTile, WorkshopItemCard, type WorkshopItem } from './worksh
 const STEPS = [WORKSHOP_STAGE_META.base, WORKSHOP_STAGE_META.full_body, WORKSHOP_STAGE_META.derive];
 
 const styles = stylex.create({
+  headerPad: {
+    paddingBlock: 'var(--spacing-4)',
+    paddingInline: 'var(--spacing-5)',
+  },
   body: {
     padding: 'var(--spacing-4) var(--spacing-5)',
     maxHeight: '76dvh',
@@ -46,6 +51,10 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     gap: 'var(--spacing-4)',
+    '@media (max-width: 639px)': {
+      paddingInline: 'var(--spacing-4)',
+      maxHeight: '64dvh',
+    },
   },
   footer: {
     display: 'flex',
@@ -560,6 +569,7 @@ export function CharacterWorkshopDialog({
         title={`人设工坊 · ${character.name}`}
         subtitle="三步锁定角色形象：基础形象 → 稳定全身图 → 多视角与细节拆解，任意步骤都可跳过或手动上传"
         onOpenChange={onOpenChange}
+        xstyle={styles.headerPad}
       />
 
       <div {...stylex.props(styles.body)}>
@@ -661,7 +671,11 @@ export function CharacterWorkshopDialog({
           <VStack gap={4}>
             <div {...stylex.props(styles.referenceBar)}>
               {fullReferenceUrl ? (
-                <img src={fullReferenceUrl} alt="基础形象参考" {...stylex.props(styles.referenceThumb)} />
+                <MediaImage
+                  src={fullReferenceUrl}
+                  alt="基础形象参考"
+                  xstyle={styles.referenceThumb}
+                />
               ) : (
                 <ImagePlus size={20} color="var(--color-text-secondary)" />
               )}
@@ -751,7 +765,11 @@ export function CharacterWorkshopDialog({
           <VStack gap={4}>
             <div {...stylex.props(styles.referenceBar)}>
               {deriveReferenceUrl ? (
-                <img src={deriveReferenceUrl} alt="全身图参考" {...stylex.props(styles.referenceThumb)} />
+                <MediaImage
+                  src={deriveReferenceUrl}
+                  alt="全身图参考"
+                  xstyle={styles.referenceThumb}
+                />
               ) : (
                 <ImagePlus size={20} color="var(--color-text-secondary)" />
               )}

@@ -3,6 +3,7 @@
 import * as stylex from '@stylexjs/stylex';
 import { Check, Loader2, RefreshCw, Upload } from 'lucide-react';
 import { Button } from '@astryxdesign/core/Button';
+import { MediaImage } from '@/components/media-image';
 import type { WorkshopTarget } from '@/lib/character-workshop';
 
 const styles = stylex.create({
@@ -154,7 +155,12 @@ export function WorkshopItemCard({
         {...stylex.props(styles.thumbButton, selected && styles.thumbButtonSelected)}
         aria-pressed={selected}
       >
-        <img src={item.url} alt={item.label} {...stylex.props(styles.thumb)} loading="lazy" />
+        <MediaImage
+          src={item.url}
+          alt={item.label}
+          xstyle={styles.thumb}
+          loading="lazy"
+        />
         {selected && (
           <span {...stylex.props(styles.checkBadge)}>
             <Check size={10} />

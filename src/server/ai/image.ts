@@ -105,11 +105,17 @@ async function loadReferenceImage(url: string): Promise<DataContent> {
     throw new Error('参考图仅支持 http(s) 或 data URL');
   }
 
+  // 私有 Vercel Blob 需要携带 token 才能读取（与 /api/media/file 代理一致）
+  const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+  const isBlobHost = /\.blob\.vercel-storage\.com$/i.test(parsed.hostname);
+  const headers: Record<string, string> = { accept: 'image/*' };
+  if (blobToken && isBlobHost) headers.authorization = `Bearer ${blobToken}`;
+
   let response: Response;
   try {
     response = await fetch(parsed.toString(), {
       signal: AbortSignal.timeout(REFERENCE_FETCH_TIMEOUT_MS),
-      headers: { accept: 'image/*' },
+      headers,
     });
   } catch {
     throw new Error('参考图读取失败或超时');
