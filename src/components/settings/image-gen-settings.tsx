@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ImagePlus, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { Card } from '@astryxdesign/core/Card';
 import { Text } from '@astryxdesign/core/Text';
+import { SafeImage } from '@/components/safe-image';
 import { Button } from '@astryxdesign/core/Button';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { Selector } from '@astryxdesign/core/Selector';
@@ -240,7 +241,12 @@ export function ImageGenSettings({
               </HStack>
 
               {testImageUrl && (
-                <img src={testImageUrl} alt="生图测试结果" {...stylex.props(styles.preview)} />
+                <SafeImage
+                  src={testImageUrl}
+                  alt="生图测试结果"
+                  showSkeleton={false}
+                  xstyle={styles.preview}
+                />
               )}
             </VStack>
           )}

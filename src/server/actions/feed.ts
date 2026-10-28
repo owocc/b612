@@ -62,6 +62,7 @@ export async function createPost(formData: FormData) {
     mediaJson = JSON.stringify(
       ordered.map((a) => ({
         type: 'image',
+        id: a.id,
         url: a.downloadUrl || a.blobUrl,
         width: a.width,
         height: a.height,

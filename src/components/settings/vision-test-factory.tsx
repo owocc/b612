@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Card } from '@astryxdesign/core/Card';
 import { Text } from '@astryxdesign/core/Text';
+import { SafeImage } from '@/components/safe-image';
 import { Button } from '@astryxdesign/core/Button';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Selector } from '@astryxdesign/core/Selector';
@@ -271,10 +272,13 @@ export function VisionTestFactory({
             </div>
           ) : (
             <div {...stylex.props(styles.previewRow)}>
-              <img
+              <SafeImage
                 src={testPreviewUrl}
                 alt="测试预览"
-                {...stylex.props(styles.previewThumb)}
+                showSkeleton={false}
+                showRetry={false}
+                compactFallback
+                xstyle={styles.previewThumb}
               />
               <VStack gap={0.5}>
                 <Text size="sm" as="span">

@@ -6,6 +6,8 @@ import { getFeedHiddenCharacterIds } from '@/server/friend-permissions';
 
 export type PostMedia = {
   type: 'image';
+  /** Media asset id when known; enables the ownership-checked `/api/media/file?id=` proxy. */
+  id?: string;
   url: string;
   width: number | null;
   height: number | null;

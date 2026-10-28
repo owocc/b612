@@ -25,12 +25,12 @@ import { Button } from '@astryxdesign/core/Button';
 import { Text } from '@astryxdesign/core/Text';
 import { Item } from '@astryxdesign/core/Item';
 import { UserAvatar } from '@/components/user-avatar';
+import { SafeImage } from '@/components/safe-image';
 import { MediaLightbox } from '@/components/media-lightbox';
 import { ChatContextInspector } from '@/components/chat-context-inspector';
 import { GroupInfoDrawer } from './group-info-drawer';
 import { Code2 } from 'lucide-react';
 import { useAppToast } from '@/lib/toast';
-import { resolveMediaUrl } from '@/lib/utils';
 import { useClientSync } from '@/components/client-sync-provider';
 import {
   sendGroupMessage,
@@ -780,11 +780,13 @@ export function GroupChatWindow({
                                 }
                                 {...stylex.props(styles.attachment)}
                               >
-                                <img
-                                  src={resolveMediaUrl(att.blobUrl) || att.blobUrl}
+                                <SafeImage
+                                  src={att.blobUrl}
+                                  assetId={att.id}
                                   alt={att.originalFilename || '图片'}
-                                  {...stylex.props(styles.image)}
+                                  xstyle={styles.image}
                                   loading="lazy"
+                                  compactFallback
                                 />
                               </div>
                             ))}
@@ -874,11 +876,13 @@ export function GroupChatWindow({
                               }
                               {...stylex.props(styles.attachment)}
                             >
-                              <img
-                                src={resolveMediaUrl(att.blobUrl) || att.blobUrl}
+                              <SafeImage
+                                src={att.blobUrl}
+                                assetId={att.id}
                                 alt={att.originalFilename || '图片'}
-                                {...stylex.props(styles.image)}
+                                xstyle={styles.image}
                                 loading="lazy"
+                                compactFallback
                               />
                             </div>
                           ))}
@@ -1021,10 +1025,13 @@ export function GroupChatWindow({
                         {...stylex.props(styles.pendingItem)}
                       >
                         <div {...stylex.props(styles.preview)}>
-                          <img
+                          <SafeImage
                             src={img.previewUrl}
-                            alt="preview"
-                            {...stylex.props(styles.previewImage)}
+                            alt="待发送图片"
+                            showSkeleton={false}
+                            showRetry={false}
+                            compactFallback
+                            xstyle={styles.previewImage}
                           />
                           {img.status === 'uploading' && (
                             <div {...stylex.props(styles.overlayUploading)}>
