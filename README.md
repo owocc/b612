@@ -103,6 +103,17 @@ curl -X POST /api/characters/<id>/workshop/assets \
 - 未启用 AI 生图时生成接口返回 `image_gen_not_configured`，向导仍可上传 / 跳过继续。
 - 上传走 Stage 1 的 `POST /api/characters/[id]/assets`（multipart，`type` + `metadata` 自动标注阶段与目标）；生成结果通过 `attachCharacterAssetsFromUrls()` 直接挂载，避免二次下载转存。
 
+## 角色详情页 · 形象资产面板
+
+角色详情页顶部有「档案 / 形象资产」切换；资产面板对应 `src/components/character-assets/character-assets-panel.tsx`，由服务端 `listCharacterAssets()` 预取首屏数据。
+
+- 网格展示该角色的全部视觉资产，类型标签与 `metadata.workshopTarget`（正面 / 侧面 / 背面 / 面部特写等）都会显示；点击缩略图用 `MediaLightbox` 查看大图，私有 Blob 走 `MediaImage` 的登录态代理。
+- 每张卡片右上角有独立 `Switch` 控制 `isEnabled`，PATCH 乐观更新、失败自动回滚；禁用后图片置灰、虚线边框，并直接退出后续生图参考图列表。
+- 单张卡片提供「重新上传替换」（先上传新图、再删除旧图，保留类型与排序）与删除确认弹窗；删除会同步清理自有 Blob。
+- 「导入外部设定图 / 添加素材」弹窗支持拖拽多选、逐张选择资产类型打标，也支持粘贴图片 URL 批量镜像转存；结果按部分成功合并回列表并 `router.refresh()` 同步服务端计数。
+
+移动端为两列网格，弹窗内边距与高度按 `dvh` 收紧；桌面端自适应列宽。
+
 ## 架构要点
 
 ```
