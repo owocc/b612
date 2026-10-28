@@ -9,6 +9,10 @@ import {FriendSettingsCard} from '@/components/friend-settings-card';
 import {normalizeFriendPermission} from '@/server/friend-permissions';
 import {CharacterEditor, type CharacterFormValues} from '@/components/character-editor';
 import {CharacterWorkshopLauncher} from '@/components/character-workshop/character-workshop-dialog';
+import {CharacterAssetsPanel} from '@/components/character-assets/character-assets-panel';
+import {CharacterDetailTabs} from '@/components/character-assets/character-detail-tabs';
+import {listCharacterAssets} from '@/server/character-assets';
+import type {CharacterAssetView} from '@/lib/character-assets';
 import {SendMessageButton} from '@/components/send-message-button';
 import {Button} from '@astryxdesign/core/Button';
 import {Settings2} from 'lucide-react';
@@ -151,7 +155,16 @@ export default async function CharacterViewPage({
     ? `${provider?.name ?? '未知提供方'} / ${character.modelId ?? '默认模型'}`
     : (character.modelId ? `全局 / ${character.modelId}` : null);
 
-  return (
+  // 形象资产：列表查询失败不应阻断整个详情页（例如旧库尚未迁移）
+  let assets: CharacterAssetView[] = [];
+  try {
+    assets = await listCharacterAssets(userId, character.id);
+  } catch (err) {
+    console.error('[character detail] load assets failed:', err);
+    assets = [];
+  }
+
+  const profile = (
     <CharacterProfile
       character={character}
       modelText={modelText ?? undefined}
@@ -189,6 +202,14 @@ export default async function CharacterViewPage({
           </Link>
         </div>
       }
+    />
+  );
+
+  return (
+    <CharacterDetailTabs
+      profile={profile}
+      assetCount={assets.length}
+      assets={<CharacterAssetsPanel characterId={character.id} initialAssets={assets} />}
     />
   );
 }
