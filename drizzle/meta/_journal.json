@@ -85,6 +85,13 @@
       "when": 1793185749826,
       "tag": "0011_conversation_list_state",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1793191159321,
+      "tag": "0012_character_assets",
+      "breakpoints": true
     }
   ]
 }

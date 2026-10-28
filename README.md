@@ -45,6 +45,33 @@ npm run dev
 | 设置 | Providers、模型价格、默认 AI 参数、社区行为节奏、外观（Cookie 驱动的深色模式）、账号与密码 |
 | 通知 | AI 评论 / 私信的站内通知与角标 |
 
+## 角色视觉资产 API（人设工坊数据底座）
+
+角色视觉资产存储在 `character_assets` 表（`src/db/schema.ts`），与服务端封装位于 `src/server/character-assets.ts`。资产类型：`base`（基础形象）、`full_body`（全身）、`three_view`（三视图）、`detail_face`（脸部特写）、`detail_outfit`（服饰特写）、`custom`（自定义/外部导入）。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/characters/[id]/assets` | 资产列表；`?enabled=1` 仅已启用，`?type=base,full_body` 按类型过滤 |
+| POST | `/api/characters/[id]/assets` | 批量上传文件，或按 URL / data URL 批量导入 |
+| GET | `/api/characters/[id]/assets/[assetId]` | 单条资产详情 |
+| PATCH | `/api/characters/[id]/assets/[assetId]` | 修改 `type` / `isEnabled` / `sortOrder` / `metadata` |
+| DELETE | `/api/characters/[id]/assets/[assetId]` | 删除记录并清理自有存储（外链不删） |
+
+```bash
+# 批量上传（multipart，字段 files 可重复）
+curl -X POST /api/characters/<id>/assets \
+  -F "files=@front.png" -F "files=@side.png" -F "type=three_view"
+
+# 外部整套设定图批量导入（默认下载转存，防外链失效）
+curl -X POST /api/characters/<id>/assets \
+  -H 'content-type: application/json' \
+  -d '{"items":[{"url":"https://cdn.example.com/a.png","type":"full_body","metadata":{"platform":"mj"}}]}'
+```
+
+- 单张上限 15MB，单次最多 30 张；批量接口采用「部分成功」语义，响应同时返回 `assets` 与 `failed`。
+- `PATCH` 用 `metadata` 整体替换，或 `metadataPatch` 浅合并；`isEnabled=false` 的资产不会进入后续生图参考图。
+- Stage 4 可直接调用 `getCharacterReferenceImageUrls(userId, characterId)` 获取已启用参考图（基础形象优先）。
+
 ## 架构要点
 
 ```
