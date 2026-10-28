@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import * as stylex from '@stylexjs/stylex';
 import { colorVars } from '@astryxdesign/core/theme/tokens.stylex';
-import { resolveMediaUrl } from '@/lib/utils';
+import { SafeImage } from '@/components/safe-image';
 
 export const GRADIENTS: Record<string, string> = {
   violet: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
@@ -79,15 +79,10 @@ export function UserAvatar({
   xstyle,
   radius = 'var(--radius-container, 12px)',
 }: UserAvatarProps) {
-  const [imgError, setImgError] = useState(false);
-  const finalUrl = resolveMediaUrl(url);
-
-  useEffect(() => {
-    setImgError(false);
-  }, [url]);
-
+  // 记录失败的具体 URL：切换头像时自然恢复，无需在 effect 里重置状态。
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const gradient = GRADIENTS[color ?? 'violet'] ?? GRADIENTS.violet;
-  const showImage = Boolean(finalUrl && !imgError);
+  const showImage = Boolean(url && failedUrl !== url);
 
   const rootProps = stylex.props(styles.root, xstyle);
   const rootClassName = className
@@ -112,12 +107,19 @@ export function UserAvatar({
       title={tooltip === false ? undefined : tooltip === true ? name : tooltip}
     >
       {showImage ? (
-        <img
-          src={finalUrl!}
+        <SafeImage
+          src={url}
           alt={name}
-          onError={() => setImgError(true)}
+          showSkeleton={false}
+          showRetry={false}
+          xstyle={styles.image}
           style={{ borderRadius: radius }}
-          {...stylex.props(styles.image)}
+          onError={() => setFailedUrl(url ?? null)}
+          fallback={
+            <span {...stylex.props(styles.fallback)} style={{ borderRadius: radius }}>
+              {emoji || name?.slice(0, 1) || '✨'}
+            </span>
+          }
         />
       ) : (
         <span {...stylex.props(styles.fallback)} style={{ borderRadius: radius }}>

@@ -13,7 +13,7 @@ import { Button } from '@astryxdesign/core/Button';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { useAppToast } from '@/lib/toast';
 import { UserAvatar } from '@/components/user-avatar';
-import { MediaImage } from '@/components/media-image';
+import { SafeImage } from '@/components/safe-image';
 import { createPost } from '@/server/actions/feed';
 import { ImagePlus, X } from 'lucide-react';
 
@@ -236,7 +236,7 @@ export function Composer({
                 <div {...stylex.props(styles.previewGrid)}>
                   {images.map((img) => (
                     <div key={img.id} {...stylex.props(styles.previewCell)}>
-                      <MediaImage src={img.url} alt="待发布图片" xstyle={styles.previewImage} />
+                      <SafeImage src={img.url} alt="待发布图片" xstyle={styles.previewImage} />
                       <button
                         type="button"
                         aria-label="移除图片"

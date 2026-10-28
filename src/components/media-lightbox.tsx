@@ -135,19 +135,53 @@ const styles = stylex.create({
   },
 });
 
+export type LightboxMediaItem = {
+  id?: string | null;
+  url: string;
+  originalFilename?: string | null;
+  width?: number | null;
+  height?: number | null;
+  perception?: { summary?: string | null; ocrText?: string | null; status?: string } | null;
+};
+
+/** Normalize a list of raw media records into lightbox slides (always via the auth proxy). */
+export function toLightboxSlides(items: LightboxMediaItem[]) {
+  return items
+    .map((item) => {
+      const src = resolveMediaUrl(item.url, item.id);
+      if (!src) return null;
+      return {
+        src,
+        download: item.originalFilename
+          ? { filename: item.originalFilename, url: src }
+          : undefined,
+        width: item.width ?? undefined,
+        height: item.height ?? undefined,
+      };
+    })
+    .filter((slide): slide is NonNullable<typeof slide> => slide !== null);
+}
+
+/**
+ * Unified lightbox for single images and galleries.
+ * All slide URLs are resolved through `resolveMediaUrl`, so raw private blob URLs
+ * never reach the browser (the historical cause of broken large-image previews).
+ */
 export function MediaLightbox({
   media,
+  gallery,
+  index = 0,
+  onIndexChange,
   onClose,
   isDevMode = false,
   mediaAssetId,
 }: {
-  media: {
-    url: string;
-    originalFilename?: string | null;
-    width?: number | null;
-    height?: number | null;
-    perception?: { summary?: string | null; ocrText?: string | null; status?: string } | null;
-  } | null;
+  /** Active (or single) media item. */
+  media: LightboxMediaItem | null;
+  /** Optional gallery; when provided, prev/next navigation is enabled. */
+  gallery?: LightboxMediaItem[];
+  index?: number;
+  onIndexChange?: (index: number) => void;
   onClose: () => void;
   isDevMode?: boolean;
   mediaAssetId?: string | null;
@@ -157,19 +191,10 @@ export function MediaLightbox({
 
   if (!media) return null;
 
-  const imageUrl = resolveMediaUrl(media.url) || media.url;
+  const items = gallery && gallery.length > 0 ? gallery : [media];
+  const slides = toLightboxSlides(items);
+  const isGallery = slides.length > 1;
   const hasPerception = Boolean(media.perception?.summary);
-
-  const handleDownload = () => {
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = media.originalFilename || 'image';
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const handleClose = () => {
     setShowDevPanel(false);
@@ -182,14 +207,13 @@ export function MediaLightbox({
       <Lightbox
         open={Boolean(media)}
         close={handleClose}
-        slides={[
-          {
-            src: imageUrl,
-            download: media.originalFilename
-              ? { filename: media.originalFilename, url: imageUrl }
-              : undefined,
+        index={isGallery ? index : 0}
+        slides={slides}
+        on={{
+          view: ({ index: nextIndex }) => {
+            if (isGallery && nextIndex !== index) onIndexChange?.(nextIndex);
           },
-        ]}
+        }}
         plugins={[Zoom, Download]}
         controller={{ closeOnBackdropClick: true }}
         zoom={{
@@ -199,8 +223,8 @@ export function MediaLightbox({
           scrollToZoom: true,
         }}
         render={{
-          buttonPrev: () => null,
-          buttonNext: () => null,
+          buttonPrev: isGallery ? undefined : () => null,
+          buttonNext: isGallery ? undefined : () => null,
           iconDownload: () => <DownloadIcon size={20} color="#ffffff" />,
           iconClose: () => <X size={22} color="#ffffff" />,
           iconZoomIn: () => <ZoomIn size={20} color="#ffffff" />,

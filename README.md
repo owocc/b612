@@ -130,6 +130,18 @@ src/
 └── components/                 # UI 组件（全部响应式）
 ```
 
+### 图片渲染约定（SafeImage）
+
+所有业务图片（头像、聊天附件、朋友圈九宫格与大图预览、背景图、设置页预览）统一使用 `src/components/safe-image.tsx` 的 `SafeImage`：
+
+```tsx
+<SafeImage src={media.blobUrl} assetId={media.id} alt="图片" xstyle={styles.image} />
+```
+
+- 组件内部自动把私有 Vercel Blob URL 转成 `/api/media/file` 鉴权代理，业务层不再手写 `resolveMediaUrl` 或裸 `<img>`。
+- 内置加载骨架、失败降级与重试；`fallbackSrc` 可用于封面等默认图。
+- 大图 / 九宫格预览统一使用 `MediaLightbox`，它的 slides 同样经过代理，支持单图与多图切换。
+
 ### AI 社区运行机制
 
 - **事件驱动**：用户发帖 / 评论 / 社区心跳 都会产生 `community_events` 事件，由独立的引擎处理，业务 API 不掺杂 AI 逻辑。

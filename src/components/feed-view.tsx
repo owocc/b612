@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
 import { UserAvatar } from '@/components/user-avatar';
-import { MediaImage } from '@/components/media-image';
+import { SafeImage } from '@/components/safe-image';
 import { Composer } from '@/components/composer';
 import { PostCard } from '@/components/post-card';
 import { FeedNotificationsPopover } from '@/components/feed-notifications-popover';
@@ -516,7 +516,7 @@ export function FeedView({
           {...stylex.props(styles.coverArea)}
           title="点击更换朋友圈背景"
         >
-          <MediaImage
+          <SafeImage
             src={displayCover}
             alt="朋友圈背景图"
             fallbackSrc={DEFAULT_FEED_COVER}
