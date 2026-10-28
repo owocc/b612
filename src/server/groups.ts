@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { aiCharacters, groupMembers, groupMessages, groupReactions, groups, user } from '@/db/schema';
 import { getMediaForGroupMessages, type MediaAssetView } from '@/server/media';
@@ -13,6 +13,10 @@ export type GroupView = {
   lastMessageAt: Date | null;
   lastMessagePreview: string | null;
   unreadCount: number;
+  isPinned: boolean;
+  pinnedAt: Date | null;
+  isArchived: boolean;
+  archivedAt: Date | null;
   memberCount: number;
   memberAvatars: {
     name: string;
@@ -81,6 +85,12 @@ export async function getGroups(userId: string): Promise<GroupView[]> {
     .select({
       groupId: groupMembers.groupId,
       lastReadAt: groupMembers.lastReadAt,
+      isPinned: groupMembers.isPinned,
+      pinnedAt: groupMembers.pinnedAt,
+      isArchived: groupMembers.isArchived,
+      archivedAt: groupMembers.archivedAt,
+      isHidden: groupMembers.isHidden,
+      hiddenAt: groupMembers.hiddenAt,
     })
     .from(groupMembers)
     .where(and(eq(groupMembers.userId, userId), eq(groupMembers.memberType, 'user')));
@@ -124,6 +134,13 @@ export async function getGroups(userId: string): Promise<GroupView[]> {
 
   for (const g of groupRows) {
     const mem = membershipMap.get(g.id);
+    // 软删除仅隐藏会话；群内出现新消息（last_message_at 晚于 hidden_at）后自动恢复
+    if (
+      mem?.isHidden &&
+      (!g.lastMessageAt || !mem.hiddenAt || g.lastMessageAt.getTime() <= mem.hiddenAt.getTime())
+    ) {
+      continue;
+    }
     let unreadCount = 0;
 
     if (mem?.lastReadAt) {
@@ -165,6 +182,10 @@ export async function getGroups(userId: string): Promise<GroupView[]> {
       lastMessageAt: g.lastMessageAt ? new Date(g.lastMessageAt) : null,
       lastMessagePreview: g.lastMessagePreview,
       unreadCount,
+      isPinned: mem?.isPinned ?? false,
+      pinnedAt: mem?.pinnedAt ? new Date(mem.pinnedAt) : null,
+      isArchived: mem?.isArchived ?? false,
+      archivedAt: mem?.archivedAt ? new Date(mem.archivedAt) : null,
       memberCount: members.length,
       memberAvatars,
     });
@@ -354,6 +375,32 @@ export async function getGroupMessages(
 }
 
 /**
+ * Mark a group as unread for the human user (pure metadata change, no agent turn).
+ */
+export async function markGroupUnread(userId: string, groupId: string): Promise<void> {
+  const [latest] = await db
+    .select({ createdAt: groupMessages.createdAt })
+    .from(groupMessages)
+    .where(and(eq(groupMessages.groupId, groupId), ne(groupMessages.senderType, 'user')))
+    .orderBy(desc(groupMessages.createdAt))
+    .limit(1);
+
+  await db
+    .update(groupMembers)
+    .set({
+      lastReadAt: latest ? new Date(latest.createdAt.getTime() - 1) : null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(groupMembers.groupId, groupId),
+        eq(groupMembers.userId, userId),
+        eq(groupMembers.memberType, 'user'),
+      ),
+    );
+}
+
+/**
  * Mark a group as read for the human user.
  */
 export async function markGroupRead(userId: string, groupId: string): Promise<void> {
@@ -370,6 +417,9 @@ export async function markGroupRead(userId: string, groupId: string): Promise<vo
     .set({
       lastReadAt: now,
       lastReadMessageId: latest?.id ?? null,
+      // 打开群聊即视为恢复可见（软删除后重新进入也能回到列表）
+      isHidden: false,
+      hiddenAt: null,
       updatedAt: now,
     })
     .where(

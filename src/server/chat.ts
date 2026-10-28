@@ -13,6 +13,10 @@ export type ConversationView = {
   lastMessageAt: Date | null;
   lastMessagePreview: string | null;
   unreadCount: number;
+  isPinned: boolean;
+  pinnedAt: Date | null;
+  isArchived: boolean;
+  archivedAt: Date | null;
 };
 
 export async function getConversations(userId: string): Promise<ConversationView[]> {
@@ -30,10 +34,20 @@ export async function getConversations(userId: string): Promise<ConversationView
         string | null
       >`(SELECT content FROM messages WHERE messages.conversation_id = conversations.id ORDER BY created_at DESC LIMIT 1)`,
       unreadCount: sql<number>`(SELECT CAST(count(*) AS INTEGER) FROM messages WHERE messages.conversation_id = conversations.id AND messages.role = 'assistant' AND (conversations.last_read_at IS NULL OR messages.created_at > conversations.last_read_at))`,
+      isPinned: conversations.isPinned,
+      pinnedAt: conversations.pinnedAt,
+      isArchived: conversations.isArchived,
+      archivedAt: conversations.archivedAt,
     })
     .from(conversations)
     .innerJoin(aiCharacters, eq(conversations.characterId, aiCharacters.id))
-    .where(eq(conversations.userId, userId))
+    .where(
+      and(
+        eq(conversations.userId, userId),
+        // 软删除仅隐藏会话；收到新消息（last_message_at 晚于 hidden_at）后自动恢复可见
+        sql`(${conversations.isHidden} = 0 OR (${conversations.lastMessageAt} IS NOT NULL AND ${conversations.lastMessageAt} > ${conversations.hiddenAt}))`,
+      ),
+    )
     .orderBy(desc(conversations.lastMessageAt));
   return rows;
 }
@@ -71,7 +85,14 @@ export async function getOrCreateConversation(userId: string, characterId: strin
   if (!character) return null;
 
   const existing = await getConversationByCharacter(userId, characterId);
-  if (existing) return existing;
+  if (existing) {
+    // 从联系人列表主动发起聊天时，软删除/归档的会话恢复可见
+    await db
+      .update(conversations)
+      .set({ isHidden: false, hiddenAt: null, isArchived: false, archivedAt: null })
+      .where(and(eq(conversations.id, existing), eq(conversations.userId, userId)));
+    return existing;
+  }
 
   const id = crypto.randomUUID();
   await db.insert(conversations).values({ id, userId, characterId });
@@ -131,7 +152,8 @@ export async function getConversationMessages(conversationId: string, limit = 10
 export async function markConversationRead(userId: string, conversationId: string) {
   await db
     .update(conversations)
-    .set({ lastReadAt: new Date() })
+    // 打开会话即视为恢复可见（软删除后重新进入也能回到列表）
+    .set({ lastReadAt: new Date(), isHidden: false, hiddenAt: null })
     .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)));
   // 打开会话即视为看到消息：同步清除通知中心里该会话的未读通知（Telegram/QQ 逻辑）
   await db
@@ -146,6 +168,26 @@ export async function markConversationRead(userId: string, conversationId: strin
     );
 }
 
+/**
+ * 将 DM 标记为未读：把已读游标回退到最后一条 AI 消息之前。
+ * 纯元数据变更，不触发任何 Agent 调用。
+ */
+export async function markConversationUnread(userId: string, conversationId: string) {
+  const [lastAssistant] = await db
+    .select({ createdAt: messages.createdAt })
+    .from(messages)
+    .where(and(eq(messages.conversationId, conversationId), eq(messages.role, 'assistant')))
+    .orderBy(desc(messages.createdAt))
+    .limit(1);
+
+  await db
+    .update(conversations)
+    .set({
+      lastReadAt: lastAssistant ? new Date(lastAssistant.createdAt.getTime() - 1) : null,
+    })
+    .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)));
+}
+
 export async function totalUnreadMessages(userId: string) {
   const [row] = await db
     .select({
@@ -158,6 +200,8 @@ export async function totalUnreadMessages(userId: string) {
         eq(conversations.userId, userId),
         eq(messages.role, 'assistant'),
         gt(messages.createdAt, sql`COALESCE(conversations.last_read_at, unixepoch(0) * 1000)`),
+        // 已软删除（且没有新消息）的会话不计入未读角标
+        sql`(conversations.is_hidden = 0 OR (conversations.last_message_at IS NOT NULL AND conversations.last_message_at > conversations.hidden_at))`,
       ),
     );
   return row?.count ?? 0;
