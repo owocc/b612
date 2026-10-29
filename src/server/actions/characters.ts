@@ -4,7 +4,7 @@ import { and, desc, eq, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { db } from '@/db';
-import { aiCharacters, aiMemories, aiRelationships } from '@/db/schema';
+import { aiCharacters, aiMemories, aiRelationships, providerConfigs } from '@/db/schema';
 import { requireUserId } from '@/lib/session';
 import { deleteFromBlobStorage } from '@/server/media';
 import { summarizeDailyMemoriesForSingleCharacter } from '@/server/ai/nightly-memory';
@@ -90,6 +90,78 @@ export async function updateCharacter(id: string, input: CharacterInput) {
   }
   revalidatePath('/characters');
   revalidatePath(`/characters/${id}`);
+  return { ok: true };
+}
+
+const profileFieldSchema = z.object({
+  bio: z.string().trim().max(200),
+  relationshipToUser: z.string().trim().max(100),
+  persona: z.string().trim().max(3000),
+  personality: z.string().trim().max(200),
+  interests: z.string().trim().max(200),
+  expressionStyle: z.string().trim().max(500),
+  memoryRetention: z.enum(['excellent', 'normal', 'slightly_forgetful', 'forgetful']),
+  grudgeRate: z.number().min(0).max(1),
+  systemPrompt: z.string().trim().max(4000).nullable(),
+  status: z.enum(['active', 'paused']),
+  providerId: z.string().trim().max(64).nullable(),
+  modelId: z.string().trim().max(120).nullable(),
+  temperature: z.number().min(0).max(2).nullable(),
+  topP: z.number().min(0).max(1).nullable(),
+  maxTokens: z.number().int().min(50).max(16000).nullable(),
+});
+
+const profilePatchSchema = profileFieldSchema.partial();
+
+export type CharacterProfilePatch = z.input<typeof profilePatchSchema>;
+
+/**
+ * 完整资料页的增量保存：只更新调用方显式提交的字段，
+ * 其余人设 / 模型配置保持原值（避免失焦保存互相覆盖）。
+ */
+export async function updateCharacterProfileFields(id: string, patch: CharacterProfilePatch) {
+  const userId = await requireUserId();
+  const parsed = profilePatchSchema.safeParse(patch);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? '保存失败' };
+  }
+  if (Object.keys(parsed.data).length === 0) return { ok: true };
+
+  const [character] = await db
+    .select({ id: aiCharacters.id })
+    .from(aiCharacters)
+    .where(and(eq(aiCharacters.id, id), eq(aiCharacters.userId, userId)))
+    .limit(1);
+  if (!character) return { error: '居民不存在' };
+
+  if (parsed.data.providerId) {
+    const [provider] = await db
+      .select({ id: providerConfigs.id })
+      .from(providerConfigs)
+      .where(and(eq(providerConfigs.id, parsed.data.providerId), eq(providerConfigs.userId, userId)))
+      .limit(1);
+    if (!provider) return { error: '模型服务商不存在' };
+  }
+
+  const data = parsed.data;
+  try {
+    await db
+      .update(aiCharacters)
+      .set({
+        ...data,
+        systemPrompt: data.systemPrompt === undefined ? undefined : data.systemPrompt || null,
+        providerId: data.providerId === undefined ? undefined : data.providerId || null,
+        modelId: data.modelId === undefined ? undefined : data.modelId || null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(aiCharacters.id, id), eq(aiCharacters.userId, userId)));
+  } catch {
+    return { error: '保存失败，请稍后重试' };
+  }
+
+  revalidatePath('/characters');
+  revalidatePath(`/characters/${id}`);
+  revalidatePath(`/characters/${id}/profile`);
   return { ok: true };
 }
 

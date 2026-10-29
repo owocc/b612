@@ -1285,7 +1285,7 @@ export function ChatWindow({
         >
           <div {...stylex.props(styles.profileOverlayBar)}>
             <span {...stylex.props(styles.profileOverlayTitle)}>居民资料</span>
-            <Link href={`/characters/${character.id}`}>
+            <Link href={`/characters/${character.id}/profile`}>
               <Button label="完整资料页" variant="ghost" size="sm" />
             </Link>
             <button

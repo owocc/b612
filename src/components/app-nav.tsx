@@ -250,6 +250,9 @@ const isActive = (pathname: string, href: string) =>
 // 移动端二级页面（详情/子路由）隐藏底部 Tab 栏，更像原生应用；
 // 返回值为该二级页面的上级页面地址，用于渲染通用返回栏
 const mobileBackTarget = (pathname: string): string | null => {
+  // 完整资料页的上一级是精简名片页，而不是联系人列表
+  const characterProfile = pathname.match(/^\/characters\/([^/]+)\/profile$/);
+  if (characterProfile) return `/characters/${characterProfile[1]}`;
   if (pathname.startsWith('/post/')) return '/feed';
   if (pathname.startsWith('/groups/')) return '/messages';
   if (pathname.startsWith('/usage')) return '/settings';
@@ -261,10 +264,10 @@ const mobileBackTarget = (pathname: string): string | null => {
   return root ?? null;
 };
 
-// 角色详情全屏页自带导航栏（返回键需要回到来源页，故由 CharacterDetailShell 渲染）
-const CHARACTER_DETAIL_PATH = /^\/characters\/(?!manage$|relationships$)[^/]+$/;
+// 角色详情全屏页与完整资料页自带导航栏（返回键需要回到来源页，故由 CharacterDetailShell / 档案页渲染）
+const CHARACTER_DETAIL_PATH = /^\/characters\/(?!manage$|relationships$)[^/]+(\/profile)?$/;
 
-// 自带移动端返回按钮的二级页面（聊天窗口、动态详情、角色详情），无需通用返回栏
+// 自带移动端返回按钮的二级页面（聊天窗口、动态详情、角色详情、完整资料页），无需通用返回栏
 const hasOwnMobileBack = (pathname: string) =>
   pathname.startsWith('/messages/') ||
   pathname.startsWith('/post/') ||
