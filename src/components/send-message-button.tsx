@@ -6,7 +6,17 @@ import {Button} from '@astryxdesign/core/Button';
 import {useAppToast} from '@/lib/toast';
 import {openConversation} from '@/server/actions/chat';
 
-export function SendMessageButton({characterId}: {characterId: string}) {
+export function SendMessageButton({
+  characterId,
+  label = '发私信',
+  width = 'auto',
+  variant = 'primary',
+}: {
+  characterId: string;
+  label?: string;
+  width?: number | string;
+  variant?: 'primary' | 'secondary' | 'ghost';
+}) {
   const router = useRouter();
   const toast = useAppToast();
 
@@ -16,5 +26,5 @@ export function SendMessageButton({characterId}: {characterId: string}) {
     else toast.error(res.error ?? '打开会话失败');
   };
 
-  return <Button label="发私信" variant="primary" icon={<MessageCircle size={16} />} onClick={chat} />;
+  return <Button label={label} variant={variant} width={width} icon={<MessageCircle size={16} />} onClick={chat} />;
 }

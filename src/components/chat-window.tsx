@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import { colorVars } from '@astryxdesign/core/theme/tokens.stylex';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Banknote, Code2, Gift, Image as ImageIcon, Loader2, RefreshCw, X } from 'lucide-react';
 import { ChatContextInspector } from '@/components/chat-context-inspector';
 import { CharacterProfile } from '@/components/character-profile';
@@ -451,6 +451,7 @@ export function ChatWindow({
   const { refresh: refreshSync, ingestSync } = useClientSync();
   const searchParams = useSearchParams();
   const profileOpen = searchParams?.get('profile') === '1';
+  const router = useRouter();
 
   const [messagesList, setMessagesList] = useState<MessageItem[]>(initialMessages);
   const [isTyping, setIsTyping] = useState(false);
@@ -949,6 +950,13 @@ export function ChatWindow({
         <div {...stylex.props(styles.headerInfo)}>
           <Link
             href={`/messages/${conversationId}?profile=1`}
+            onClick={(event) => {
+              // 手机端直接进入全屏资料页，桌面端继续用聊天内浮层
+              if (window.matchMedia('(max-width: 639px)').matches) {
+                event.preventDefault();
+                router.push(`/characters/${character.id}`);
+              }
+            }}
             {...stylex.props(styles.headerName, styles.headerNameLink)}
           >
             {isTyping ? '正在输入中...' : character.name}
@@ -1222,7 +1230,7 @@ export function ChatWindow({
         >
           <div {...stylex.props(styles.profileOverlayBar)}>
             <span {...stylex.props(styles.profileOverlayTitle)}>居民资料</span>
-            <Link href={`/characters/${character.id}`}>
+            <Link href={`/characters/${character.id}/profile`}>
               <Button label="完整资料页" variant="ghost" size="sm" />
             </Link>
             <Link

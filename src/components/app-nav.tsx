@@ -263,7 +263,9 @@ const mobileBackTarget = (pathname: string): string | null => {
 
 // 自带移动端返回按钮的二级页面（聊天窗口头部、动态详情头部），无需通用返回栏
 const hasOwnMobileBack = (pathname: string) =>
-  pathname.startsWith('/messages/') || pathname.startsWith('/post/');
+  pathname.startsWith('/messages/') ||
+  pathname.startsWith('/post/') ||
+  /^\/characters\/[^/]+\/profile$/.test(pathname);
 
 export function AppNav({
   user,
