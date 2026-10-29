@@ -105,6 +105,8 @@ const styles = stylex.create({
   track: {
     display: 'flex',
     width: '300%',
+    // 不参与父级 flex 收缩，否则桌面宽屏下会被压成 100%，三个面板同时露出
+    flexShrink: 0,
     height: '100%',
     transitionProperty: 'transform',
     transitionDuration: '260ms',
@@ -112,6 +114,7 @@ const styles = stylex.create({
   },
   panel: {
     width: '33.3333%',
+    flexShrink: 0,
     height: '100%',
     overflowY: 'auto',
     overscrollBehavior: 'contain',
