@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import { colorVars } from '@astryxdesign/core/theme/tokens.stylex';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Banknote, Code2, Gift, Image as ImageIcon, Loader2, RefreshCw, X } from 'lucide-react';
 import { ChatContextInspector } from '@/components/chat-context-inspector';
 import { CharacterProfile } from '@/components/character-profile';
@@ -30,6 +30,8 @@ import type { RedPacketStatusView, TransferStatusView } from '@/server/wallet';
 import { useClientSync } from '@/components/client-sync-provider';
 import type { aiCharacters } from '@/db/schema';
 import type { MediaAssetView } from '@/server/media';
+import { characterDetailHref } from '@/lib/character-routes';
+import { useIsMobile } from '@/lib/use-is-mobile';
 
 const spin = stylex.keyframes({
   '0%': { transform: 'rotate(0deg)' },
@@ -363,6 +365,9 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
+    // 手机端彻底废弃抽屉形态：资料在独立全屏路由页展示，
+    // 这里用 CSS 兜底，保证 JS 生效前也不会闪现半屏浮层
+    '@media (max-width: 767px)': { display: 'none' },
   },
   profileOverlayBar: {
     height: '56px',
@@ -387,6 +392,9 @@ const styles = stylex.create({
   },
   overlayClose: {
     padding: '4px',
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    cursor: 'pointer',
     borderRadius: '6px',
     color: colorVars['--color-text-secondary'],
     display: 'flex',
@@ -401,6 +409,19 @@ const styles = stylex.create({
     cursor: 'pointer',
     userSelect: 'none',
     transformOrigin: 'bottom center',
+  },
+  avatarProfileButton: {
+    borderWidth: 0,
+    padding: 0,
+    backgroundColor: 'transparent',
+    cursor: 'pointer',
+    borderRadius: 'var(--radius-full)',
+    display: 'inline-flex',
+    ':focus-visible': {
+      outline: '2px solid',
+      outlineColor: 'var(--color-accent)',
+      outlineOffset: 2,
+    },
   },
   avatarPoking: {
     animationName: pokeShake,
@@ -450,7 +471,14 @@ export function ChatWindow({
   const toast = useAppToast();
   const { refresh: refreshSync, ingestSync } = useClientSync();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const isMobile = useIsMobile();
   const profileOpen = searchParams?.get('profile') === '1';
+  // 手机端资料走全屏独立路由页；桌面端沿用聊天内的侧边浮层
+  const backToChat = `/messages/${conversationId}`;
+  const profileHref = isMobile
+    ? characterDetailHref(character.id, backToChat)
+    : `${backToChat}?profile=1`;
 
   const [messagesList, setMessagesList] = useState<MessageItem[]>(initialMessages);
   const [isTyping, setIsTyping] = useState(false);
@@ -481,6 +509,31 @@ export function ChatWindow({
   const lastSeenAssistantIdRef = useRef<string | null>(
     [...initialMessages].reverse().find((m) => m.role === 'assistant')?.id ?? null,
   );
+
+  // 手机端直接访问 / 刷新带 ?profile=1 的地址时，重定向到全屏资料页，
+  // 保证任何入口都不会停留在抽屉形态
+  useEffect(() => {
+    if (isMobile && profileOpen) {
+      router.replace(characterDetailHref(character.id, backToChat));
+    }
+  }, [backToChat, character.id, isMobile, profileOpen, router]);
+
+  // 头像单击打开资料，双击仍是「拍一拍」：单击延迟触发，双击时取消
+  const avatarTapTimer = useRef<number | null>(null);
+  const cancelAvatarTap = useCallback(() => {
+    if (avatarTapTimer.current !== null) {
+      window.clearTimeout(avatarTapTimer.current);
+      avatarTapTimer.current = null;
+    }
+  }, []);
+  useEffect(() => cancelAvatarTap, [cancelAvatarTap]);
+  const handleAvatarClick = useCallback(() => {
+    if (avatarTapTimer.current !== null) return;
+    avatarTapTimer.current = window.setTimeout(() => {
+      avatarTapTimer.current = null;
+      router.push(profileHref);
+    }, 260);
+  }, [profileHref, router]);
 
   // Poll conversation-specific sync
   const pollConversation = useCallback(async () => {
@@ -889,17 +942,27 @@ export function ChatWindow({
     const isThisPoking = messageId ? pokingMessageId === messageId : false;
     return (
       <div
-        onDoubleClick={() => handlePoke(messageId || 'header')}
+        onDoubleClick={() => {
+          cancelAvatarTap();
+          handlePoke(messageId || 'header');
+        }}
         {...stylex.props(styles.avatarPokeWrap, isThisPoking && styles.avatarPoking)}
-        title="双击拍一拍"
+        title="点击查看资料 · 双击拍一拍"
       >
-        <UserAvatar
-          name={character.name}
-          emoji={character.avatarEmoji}
-          color={character.avatarColor}
-          url={character.avatarUrl}
-          size={36}
-        />
+        <button
+          type="button"
+          onClick={handleAvatarClick}
+          aria-label={`查看 ${character.name} 的资料`}
+          {...stylex.props(styles.avatarProfileButton)}
+        >
+          <UserAvatar
+            name={character.name}
+            emoji={character.avatarEmoji}
+            color={character.avatarColor}
+            url={character.avatarUrl}
+            size={36}
+          />
+        </button>
       </div>
     );
   };
@@ -948,7 +1011,7 @@ export function ChatWindow({
         {renderAvatar('header')}
         <div {...stylex.props(styles.headerInfo)}>
           <Link
-            href={`/messages/${conversationId}?profile=1`}
+            href={profileHref}
             {...stylex.props(styles.headerName, styles.headerNameLink)}
           >
             {isTyping ? '正在输入中...' : character.name}
@@ -1214,7 +1277,7 @@ export function ChatWindow({
         </div>
       </footer>
 
-      {profileOpen && (
+      {profileOpen && !isMobile && (
         <div
           {...stylex.props(styles.profileOverlay)}
           role="dialog"
@@ -1225,13 +1288,14 @@ export function ChatWindow({
             <Link href={`/characters/${character.id}`}>
               <Button label="完整资料页" variant="ghost" size="sm" />
             </Link>
-            <Link
-              href={`/messages/${conversationId}`}
+            <button
+              type="button"
+              onClick={() => router.replace(backToChat)}
               {...stylex.props(styles.overlayClose)}
               aria-label="关闭资料"
             >
               <X size={18} />
-            </Link>
+            </button>
           </div>
           <div {...stylex.props(styles.profileOverlayBody)}>
             <CharacterProfile character={character} />
