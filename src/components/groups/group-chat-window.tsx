@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Reply,
@@ -29,6 +30,7 @@ import { SafeImage } from '@/components/safe-image';
 import { MediaLightbox } from '@/components/media-lightbox';
 import { ChatContextInspector } from '@/components/chat-context-inspector';
 import { GroupInfoDrawer } from './group-info-drawer';
+import { characterDetailHref } from '@/lib/character-routes';
 import { Code2 } from 'lucide-react';
 import { useAppToast } from '@/lib/toast';
 import { useClientSync } from '@/components/client-sync-provider';
@@ -189,6 +191,19 @@ const styles = stylex.create({
     userSelect: 'none',
     transformOrigin: 'bottom center',
   },
+  avatarProfileButton: {
+    borderWidth: 0,
+    padding: 0,
+    backgroundColor: 'transparent',
+    cursor: 'pointer',
+    borderRadius: 'var(--radius-full)',
+    display: 'inline-flex',
+    ':focus-visible': {
+      outline: '2px solid',
+      outlineColor: 'var(--color-accent)',
+      outlineOffset: 2,
+    },
+  },
   avatarPoking: {
     animationName: pokeShake,
     animationDuration: '500ms',
@@ -213,6 +228,7 @@ export function GroupChatWindow({
   isVisionEnabled?: boolean;
 }) {
   const toast = useAppToast();
+  const router = useRouter();
   const { refresh: refreshSync } = useClientSync();
   const [isPending, startTransition] = useTransition();
   const [showDevInspector, setShowDevInspector] = useState(false);
@@ -580,6 +596,26 @@ export function GroupChatWindow({
     setShowMentionPicker(false);
   };
 
+  // 单击 AI 头像进入全屏资料页，双击仍是「拍一拍」：单击延迟触发，双击时取消
+  const avatarTapTimer = useRef<number | null>(null);
+  const cancelAvatarTap = useCallback(() => {
+    if (avatarTapTimer.current !== null) {
+      window.clearTimeout(avatarTapTimer.current);
+      avatarTapTimer.current = null;
+    }
+  }, []);
+  useEffect(() => cancelAvatarTap, [cancelAvatarTap]);
+  const handleAvatarClick = useCallback(
+    (characterId: string) => {
+      if (avatarTapTimer.current !== null) return;
+      avatarTapTimer.current = window.setTimeout(() => {
+        avatarTapTimer.current = null;
+        router.push(characterDetailHref(characterId, `/messages/group/${group.id}`));
+      }, 260);
+    },
+    [group.id, router],
+  );
+
   // Double click avatar triggers poke (拍一拍) - scoped only to clicked message
   const handlePoke = async (characterId: string, characterName: string, messageId?: string) => {
     if (messageId) {
@@ -818,17 +854,27 @@ export function GroupChatWindow({
                 const isThisMsgPoking = pokingMessageId === m.id;
                 const charAvatar = m.senderCharacterId ? (
                   <div
-                    onDoubleClick={() => handlePoke(m.senderCharacterId!, m.senderName, m.id)}
+                    onDoubleClick={() => {
+                      cancelAvatarTap();
+                      handlePoke(m.senderCharacterId!, m.senderName, m.id);
+                    }}
                     {...stylex.props(styles.avatarPokeWrap, isThisMsgPoking && styles.avatarPoking)}
-                    title="双击拍一拍"
+                    title="点击查看资料 · 双击拍一拍"
                   >
-                    <UserAvatar
-                      name={m.senderName}
-                      emoji={m.senderAvatarEmoji}
-                      color={m.senderAvatarColor}
-                      url={m.senderAvatarUrl}
-                      size={36}
-                    />
+                    <button
+                      type="button"
+                      onClick={() => handleAvatarClick(m.senderCharacterId!)}
+                      aria-label={`查看 ${m.senderName} 的资料`}
+                      {...stylex.props(styles.avatarProfileButton)}
+                    >
+                      <UserAvatar
+                        name={m.senderName}
+                        emoji={m.senderAvatarEmoji}
+                        color={m.senderAvatarColor}
+                        url={m.senderAvatarUrl}
+                        size={36}
+                      />
+                    </button>
                   </div>
                 ) : (
                   <UserAvatar

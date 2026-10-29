@@ -11,6 +11,8 @@ import {CharacterEditor, type CharacterFormValues} from '@/components/character-
 import {CharacterWorkshopLauncher} from '@/components/character-workshop/character-workshop-dialog';
 import {CharacterAssetsPanel} from '@/components/character-assets/character-assets-panel';
 import {CharacterDetailTabs} from '@/components/character-assets/character-detail-tabs';
+import {CharacterDetailShell} from '@/components/character-detail-shell';
+import {sanitizeBackHref} from '@/lib/character-routes';
 import {listCharacterAssets} from '@/server/character-assets';
 import type {CharacterAssetView} from '@/lib/character-assets';
 import {SendMessageButton} from '@/components/send-message-button';
@@ -36,11 +38,13 @@ export default async function CharacterViewPage({
   searchParams,
 }: {
   params: Promise<{id: string}>;
-  searchParams: Promise<{edit?: string}>;
+  searchParams: Promise<{edit?: string; back?: string}>;
 }) {
   const {id} = await params;
-  const {edit} = await searchParams;
+  const {edit, back} = await searchParams;
   const isEditMode = edit === '1' || edit === 'true';
+  // 手机端全屏资料页：`back` 记录来源页（聊天窗口等），刷新 / 深度链接后返回键仍然可用
+  const backHref = sanitizeBackHref(back) ?? '/characters';
   const userId = await requireUserId();
 
   const [character, providers, memories] = await Promise.all([
@@ -136,14 +140,16 @@ export default async function CharacterViewPage({
     };
 
     return (
-      <div style={{ maxWidth: '42rem', width: '100%', marginInline: 'auto' }}>
-        <CharacterEditor
-          characterId={character.id}
-          initial={initialValues}
-          providers={providers}
-          memories={memories}
-        />
-      </div>
+      <CharacterDetailShell title="编辑居民" fallbackHref={`/characters/${character.id}`}>
+        <div style={{ maxWidth: '42rem', width: '100%', marginInline: 'auto' }}>
+          <CharacterEditor
+            characterId={character.id}
+            initial={initialValues}
+            providers={providers}
+            memories={memories}
+          />
+        </div>
+      </CharacterDetailShell>
     );
   }
 
@@ -206,10 +212,12 @@ export default async function CharacterViewPage({
   );
 
   return (
-    <CharacterDetailTabs
-      profile={profile}
-      assetCount={assets.length}
-      assets={<CharacterAssetsPanel characterId={character.id} initialAssets={assets} />}
-    />
+    <CharacterDetailShell title={character.name} fallbackHref={backHref}>
+      <CharacterDetailTabs
+        profile={profile}
+        assetCount={assets.length}
+        assets={<CharacterAssetsPanel characterId={character.id} initialAssets={assets} />}
+      />
+    </CharacterDetailShell>
   );
 }

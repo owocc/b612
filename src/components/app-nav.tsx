@@ -261,9 +261,14 @@ const mobileBackTarget = (pathname: string): string | null => {
   return root ?? null;
 };
 
-// 自带移动端返回按钮的二级页面（聊天窗口头部、动态详情头部），无需通用返回栏
+// 角色详情全屏页自带导航栏（返回键需要回到来源页，故由 CharacterDetailShell 渲染）
+const CHARACTER_DETAIL_PATH = /^\/characters\/(?!manage$|relationships$)[^/]+$/;
+
+// 自带移动端返回按钮的二级页面（聊天窗口、动态详情、角色详情），无需通用返回栏
 const hasOwnMobileBack = (pathname: string) =>
-  pathname.startsWith('/messages/') || pathname.startsWith('/post/');
+  pathname.startsWith('/messages/') ||
+  pathname.startsWith('/post/') ||
+  CHARACTER_DETAIL_PATH.test(pathname);
 
 export function AppNav({
   user,
