@@ -250,18 +250,20 @@ export function SafeImage({
       ? `${resolvedSrc}${resolvedSrc.includes('?') ? '&' : '?'}retry=${retryCount}`
       : resolvedSrc;
 
+  const imageProps = stylex.props(xstyle);
+  const loadingClassName = status === 'loading' && showSkeleton ? stylex.props(styles.loading).className : null;
+
   return (
     // eslint-disable-next-line @next/next/no-img-element -- 图片需经鉴权代理 / 私有 Blob，无法交给 next/image 优化器
     <img
-      {...stylex.props(xstyle)}
+      {...imageProps}
       // 重试时更换 key，强制浏览器重新发起被缓存的失败请求。
       key={retryCount}
       src={displaySrc}
       alt={alt}
-      className={[className, status === 'loading' && showSkeleton ? stylex.props(styles.loading).className : null]
-        .filter(Boolean)
-        .join(' ') || undefined}
-      style={style}
+      // 合并 xstyle 的 className，而不是覆盖它：否则调用方传入的尺寸 / 圆角 / objectFit 会全部失效。
+      className={[imageProps.className, className, loadingClassName].filter(Boolean).join(' ') || undefined}
+      style={{ ...imageProps.style, ...style }}
       onLoad={handleLoad}
       onError={handleError}
       decoding="async"

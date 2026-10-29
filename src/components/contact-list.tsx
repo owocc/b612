@@ -148,7 +148,8 @@ export function ContactList({characters}: {characters: ContactRow[]}) {
             <div key={group.letter}>
               <div {...stylex.props(styles.letterHeader)}>{group.letter}</div>
               {group.items.map((c) => {
-                const active = pathname === `/characters/${c.id}`;
+                const active =
+                  pathname === `/characters/${c.id}` || pathname.startsWith(`/characters/${c.id}/`);
                 const paused = c.status !== 'active';
                 return (
                   <Link
