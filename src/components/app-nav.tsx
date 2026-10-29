@@ -250,6 +250,9 @@ const isActive = (pathname: string, href: string) =>
 // 移动端二级页面（详情/子路由）隐藏底部 Tab 栏，更像原生应用；
 // 返回值为该二级页面的上级页面地址，用于渲染通用返回栏
 const mobileBackTarget = (pathname: string): string | null => {
+  // 完整资料页的上一级是精简名片页，而不是联系人列表
+  const characterProfile = pathname.match(/^\/characters\/([^/]+)\/profile$/);
+  if (characterProfile) return `/characters/${characterProfile[1]}`;
   if (pathname.startsWith('/post/')) return '/feed';
   if (pathname.startsWith('/groups/')) return '/messages';
   if (pathname.startsWith('/usage')) return '/settings';
