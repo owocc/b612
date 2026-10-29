@@ -4,6 +4,8 @@ import {db} from '@/db';
 import {aiCharacters} from '@/db/schema';
 import {requireUserId} from '@/lib/session';
 import {CharacterMiniProfile} from '@/components/character-mini-profile';
+import {CharacterDetailShell} from '@/components/character-detail-shell';
+import {sanitizeBackHref} from '@/lib/character-routes';
 import {getCharacterFeedPosts} from '@/server/feed';
 
 export const dynamic = 'force-dynamic';
@@ -24,11 +26,13 @@ export default async function CharacterViewPage({
   searchParams,
 }: {
   params: Promise<{id: string}>;
-  searchParams: Promise<{edit?: string}>;
+  searchParams: Promise<{edit?: string; back?: string}>;
 }) {
   const {id} = await params;
-  const {edit} = await searchParams;
+  const {edit, back} = await searchParams;
   const isEditMode = edit === '1' || edit === 'true';
+  // 手机端全屏资料页：`back` 记录来源页（聊天窗口等），刷新 / 深度链接后返回键仍然可用
+  const backHref = sanitizeBackHref(back) ?? '/characters';
   const userId = await requireUserId();
 
   const [character, recentPosts] = await Promise.all([
@@ -61,5 +65,9 @@ export default async function CharacterViewPage({
   // 朋友圈条目只需要最近几条动态里的图片缩略图
   const recentPhotos = recentPosts.flatMap((post) => post.media).slice(0, 3);
 
-  return <CharacterMiniProfile character={character} recentPhotos={recentPhotos} />;
+  return (
+    <CharacterDetailShell title={character.name} fallbackHref={backHref}>
+      <CharacterMiniProfile character={character} recentPhotos={recentPhotos} />
+    </CharacterDetailShell>
+  );
 }

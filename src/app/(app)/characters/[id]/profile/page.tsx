@@ -15,8 +15,9 @@ import {listCharacterAssets} from '@/server/character-assets';
 import type {CharacterAssetView} from '@/lib/character-assets';
 import {SendMessageButton} from '@/components/send-message-button';
 import {Button} from '@astryxdesign/core/Button';
-import {ArrowLeft, Settings2} from 'lucide-react';
+import {Settings2} from 'lucide-react';
 import Link from 'next/link';
+import {CharacterDetailShell} from '@/components/character-detail-shell';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,10 +37,11 @@ export default async function CharacterProfilePage({
   searchParams,
 }: {
   params: Promise<{id: string}>;
-  searchParams: Promise<{edit?: string}>;
+  searchParams: Promise<{edit?: string; back?: string}>;
 }) {
   const {id} = await params;
   const {edit} = await searchParams;
+  const backHref = `/characters/${id}`;
   const isEditMode = edit === '1' || edit === 'true';
   const userId = await requireUserId();
 
@@ -136,29 +138,16 @@ export default async function CharacterProfilePage({
     };
 
     return (
-      <div style={{ maxWidth: '42rem', width: '100%', marginInline: 'auto', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-4)' }}>
-        <Link
-          href={`/characters/${character.id}`}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            alignSelf: 'flex-start',
-            fontSize: 'var(--font-size-sm)',
-            color: 'var(--color-text-secondary)',
-            textDecoration: 'none',
-          }}
-        >
-          <ArrowLeft size={15} />
-          <span>返回名片</span>
-        </Link>
-        <CharacterEditor
-          characterId={character.id}
-          initial={initialValues}
-          providers={providers}
-          memories={memories}
-        />
-      </div>
+      <CharacterDetailShell title="编辑居民" fallbackHref={backHref} desktopBackHref={backHref}>
+        <div style={{ maxWidth: '42rem', width: '100%', marginInline: 'auto' }}>
+          <CharacterEditor
+            characterId={character.id}
+            initial={initialValues}
+            providers={providers}
+            memories={memories}
+          />
+        </div>
+      </CharacterDetailShell>
     );
   }
 
@@ -221,27 +210,12 @@ export default async function CharacterProfilePage({
   );
 
   return (
-    <div style={{display: 'flex', flexDirection: 'column', gap: 'var(--spacing-4)'}}>
-      <Link
-        href={`/characters/${character.id}`}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          alignSelf: 'flex-start',
-          fontSize: 'var(--font-size-sm)',
-          color: 'var(--color-text-secondary)',
-          textDecoration: 'none',
-        }}
-      >
-        <ArrowLeft size={15} />
-        <span>返回名片</span>
-      </Link>
+    <CharacterDetailShell title={`${character.name} · 完整资料`} fallbackHref={backHref} desktopBackHref={backHref}>
       <CharacterDetailTabs
         profile={profile}
         assetCount={assets.length}
         assets={<CharacterAssetsPanel characterId={character.id} initialAssets={assets} />}
       />
-    </div>
+    </CharacterDetailShell>
   );
 }
